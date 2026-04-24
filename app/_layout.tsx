@@ -7,13 +7,13 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useDatabase } from '@/hooks/useDatabase';
 import { Colors } from '@/constants/colors';
 
-SplashScreen.preventAutoHideAsync();
+SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function RootLayout() {
   const { isReady } = useDatabase();
 
   useEffect(() => {
-    if (isReady) SplashScreen.hideAsync();
+    if (isReady) SplashScreen.hideAsync().catch(() => {});
   }, [isReady]);
 
   if (!isReady) {
