@@ -15,6 +15,7 @@
     "@react-native-community/slider": "^5.2.0",
     "dayjs": "^1.11.13",
     "expo": "~55.0.17",
+    "expo-asset": "~55.0.16",
     "expo-audio": "~55.0.14",
     "expo-background-fetch": "~55.0.15",
     "expo-constants": "~55.0.15",
@@ -49,6 +50,14 @@
       "exclude": [
         "react-native-reanimated",
         "react-native-worklets",
+        "react-native",
+        "react-native-safe-area-context",
+        "react-native-screens",
+        "react-native-svg",
+        "react",
+        "@react-native-community/slider",
+        "@types/react",
+        "typescript",
         "expo-linking"
       ]
     }
