@@ -16,7 +16,13 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.elliottcrane.cbtcompanion",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "UIBackgroundModes": ["fetch", "processing", "remote-notification"],
+        "NSMicrophoneUsageDescription": "CBT Companion uses the microphone so you can speak your journal entries and thought records out loud instead of typing.",
+        "NSSpeechRecognitionUsageDescription": "CBT Companion uses speech recognition to turn your spoken reflections into text for thought records and journaling.",
+        "NSFaceIDUsageDescription": "CBT Companion uses Face ID to keep your private journal and mood history secure."
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -24,7 +30,14 @@
         "backgroundColor": "#F7F5F2"
       },
       "package": "com.elliottcrane.cbtcompanion",
-      "versionCode": 1
+      "versionCode": 1,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.USE_BIOMETRIC",
+        "android.permission.USE_FINGERPRINT",
+        "android.permission.VIBRATE",
+        "android.permission.RECEIVE_BOOT_COMPLETED"
+      ]
     },
     "web": {
       "bundler": "metro",
@@ -32,7 +45,32 @@
     },
     "plugins": [
       "expo-router",
-      "expo-sqlite"
+      "expo-sqlite",
+      [
+        "expo-notifications",
+        {
+          "color": "#F7F5F2"
+        }
+      ],
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "CBT Companion uses the microphone so you can speak your reflections aloud."
+        }
+      ],
+      [
+        "expo-local-authentication",
+        {
+          "faceIDPermission": "CBT Companion uses Face ID to keep your private journal and mood history secure."
+        }
+      ],
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "CBT Companion uses the microphone to capture what you say for thought records and journaling.",
+          "speechRecognitionPermission": "CBT Companion uses speech recognition to turn your spoken reflections into text."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true
