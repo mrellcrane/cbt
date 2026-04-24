@@ -211,7 +211,8 @@ export default function ChatScreen() {
 
         if (!response.ok || !response.body) {
           const errText = await response.text();
-          throw new Error(errText || 'API error');
+          console.error('[chat] API responded with error:', response.status, errText);
+          throw new Error(`HTTP ${response.status}: ${errText || 'API error'}`);
         }
 
         const reader = response.body.getReader();
@@ -229,7 +230,11 @@ export default function ChatScreen() {
           setStreamingText(fullText);
         }
       } catch (err) {
-        fullText = "Sorry, I couldn't connect right now. Check your API key and network, then try again.";
+        const errMsg = err instanceof Error ? err.message : String(err);
+        console.error('[chat] fetch failed:', errMsg);
+        fullText = __DEV__
+          ? `[DEBUG] ${errMsg}`
+          : "Sorry, I couldn't connect right now. Check your API key and network, then try again.";
         setStreamingText(fullText);
       }
 
