@@ -14,6 +14,7 @@ import {
   StyleSheet,
   ScrollView,
 } from 'react-native';
+import Anthropic from '@anthropic-ai/sdk';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { ChatBubble } from '@/components/ChatBubble';
@@ -203,33 +204,42 @@ export default function ChatScreen() {
 
       let fullText = '';
       try {
-        const response = await fetch('/api/chat', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ messages: contextWindow, systemPromptText }),
+        const apiKey = process.env.EXPO_PUBLIC_ANTHROPIC_API_KEY;
+        if (!apiKey || apiKey === 'sk-ant-YOUR_KEY_HERE') {
+          throw new Error('Add your Anthropic API key to the .env file as EXPO_PUBLIC_ANTHROPIC_API_KEY');
+        }
+
+        const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
+
+        const apiMessages = contextWindow
+          .filter((m) => m.role === 'user' || m.role === 'assistant')
+          .map((m) => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+        const safeMessages =
+          apiMessages.length > 0 && apiMessages[0].role === 'user'
+            ? apiMessages
+            : [{ role: 'user' as const, content: 'Hi' }, ...apiMessages];
+
+        const stream = await client.messages.create({
+          model: process.env.EXPO_PUBLIC_ANTHROPIC_MODEL ?? 'claude-sonnet-4-6',
+          max_tokens: 1024,
+          system: systemPromptText,
+          messages: safeMessages,
+          stream: true,
         });
 
-        if (!response.ok || !response.body) {
-          const errText = await response.text();
-          throw new Error(errText || 'API error');
-        }
-
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        while (true) {
-          if (abortRef.current) {
-            reader.cancel();
-            break;
+        for await (const event of stream) {
+          if (abortRef.current) break;
+          if (
+            event.type === 'content_block_delta' &&
+            event.delta.type === 'text_delta'
+          ) {
+            fullText += event.delta.text;
+            setStreamingText(fullText);
           }
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          fullText += chunk;
-          setStreamingText(fullText);
         }
       } catch (err) {
-        fullText = "Sorry, I couldn't connect right now. Check your API key and network, then try again.";
+        const msg = err instanceof Error ? err.message : 'Unknown error';
+        fullText = `Sorry, I couldn't connect right now. ${msg}`;
         setStreamingText(fullText);
       }
 
