@@ -231,10 +231,9 @@ export default function ChatScreen() {
         }
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
-        console.error('[chat] fetch failed:', errMsg);
-        fullText = __DEV__
-          ? `[DEBUG] ${errMsg}`
-          : "Sorry, I couldn't connect right now. Check your API key and network, then try again.";
+        const errStack = err instanceof Error && err.stack ? err.stack : '';
+        console.error('[chat] fetch failed:', errMsg, errStack);
+        fullText = `[DEBUG] ${errMsg}`;
         setStreamingText(fullText);
       }
 
