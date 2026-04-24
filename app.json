@@ -19,7 +19,8 @@
         "UIBackgroundModes": ["fetch", "remote-notification"],
         "NSMicrophoneUsageDescription": "CBT Friend uses the microphone so you can speak your journal entries and thought records out loud instead of typing.",
         "NSSpeechRecognitionUsageDescription": "CBT Friend uses speech recognition to turn your spoken reflections into text for thought records and journaling.",
-        "NSFaceIDUsageDescription": "CBT Friend uses Face ID to keep your private journal and mood history secure."
+        "NSFaceIDUsageDescription": "CBT Friend uses Face ID to keep your private journal and mood history secure.",
+        "NSPhotoLibraryUsageDescription": "CBT Friend does not access your photo library. This description is required by the system because an included library references the Photos API."
       }
     },
     "android": {
