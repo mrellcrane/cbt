@@ -204,21 +204,23 @@ export default function ChatScreen() {
 
       let fullText = '';
       try {
+        const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
         const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
-        const chatEndpoint =
-          process.env.EXPO_PUBLIC_CHAT_API_URL ?? '/api/chat';
-        const isSupabaseFunction = chatEndpoint.includes('/functions/v1/');
-        const headers: Record<string, string> = {
-          'Content-Type': 'application/json',
-        };
-        if (isSupabaseFunction && anonKey) {
-          headers.Authorization = `Bearer ${anonKey}`;
-          headers.apikey = anonKey;
+        if (!supabaseUrl || !anonKey) {
+          throw new Error(
+            'Supabase is not configured. Set EXPO_PUBLIC_SUPABASE_URL and EXPO_PUBLIC_SUPABASE_ANON_KEY.',
+          );
         }
+        const chatEndpoint =
+          process.env.EXPO_PUBLIC_CHAT_API_URL ?? `${supabaseUrl}/functions/v1/chat`;
 
         const response = await fetch(chatEndpoint, {
           method: 'POST',
-          headers,
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${anonKey}`,
+            apikey: anonKey,
+          },
           body: JSON.stringify({ messages: contextWindow, systemPromptText }),
         });
 
