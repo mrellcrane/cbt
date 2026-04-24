@@ -6,9 +6,43 @@ import Anthropic from '@anthropic-ai/sdk';
 
 const MODEL = process.env.ANTHROPIC_MODEL ?? 'claude-sonnet-4-6';
 
+async function logServerError(params: {
+  message: string;
+  stack?: string;
+  context?: Record<string, unknown>;
+}) {
+  const url = process.env.EXPO_PUBLIC_SUPABASE_URL;
+  const key = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+  if (!url || !key) return;
+  try {
+    await fetch(`${url}/rest/v1/app_errors`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: key,
+        Authorization: `Bearer ${key}`,
+        Prefer: 'return=minimal',
+      },
+      body: JSON.stringify({
+        error_message: params.message,
+        error_stack: params.stack ?? null,
+        context: params.context ?? null,
+        platform: 'server',
+        source: 'api/chat',
+      }),
+    });
+  } catch {
+    // swallow — don't let logging fail the request
+  }
+}
+
 export async function POST(request: Request): Promise<Response> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
   if (!apiKey) {
+    await logServerError({
+      message: 'ANTHROPIC_API_KEY is not configured',
+      context: { stage: 'env_check' },
+    });
     return new Response(
       JSON.stringify({ error: 'ANTHROPIC_API_KEY is not configured.' }),
       { status: 500, headers: { 'Content-Type': 'application/json' } },
@@ -87,6 +121,16 @@ export async function POST(request: Request): Promise<Response> {
     console.error('[chat+api] Anthropic error:', error);
     const message =
       error instanceof Error ? error.message : 'Unknown error';
+    const stack = error instanceof Error ? error.stack : undefined;
+    await logServerError({
+      message,
+      stack,
+      context: {
+        stage: 'anthropic_request',
+        model: MODEL,
+        messageCount: safeMessages.length,
+      },
+    });
     return new Response(
       JSON.stringify({ error: message }),
       { status: 502, headers: { 'Content-Type': 'application/json' } },

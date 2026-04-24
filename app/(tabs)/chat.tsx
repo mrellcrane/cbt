@@ -37,6 +37,7 @@ import type { ChatMessage, Mode } from '@/lib/ai/types';
 import { Colors } from '@/constants/colors';
 import { LESSONS } from '@/lib/lessons';
 import { router } from 'expo-router';
+import { logError } from '@/lib/errorLog';
 
 // Strip the [[THOUGHT_RECORD_COMPLETE]] and [[GRATITUDE_COMPLETE]] blocks from
 // display text while returning the raw payload for DB persistence.
@@ -233,7 +234,17 @@ export default function ChatScreen() {
         const errMsg = err instanceof Error ? err.message : String(err);
         const errStack = err instanceof Error && err.stack ? err.stack : '';
         console.error('[chat] fetch failed:', errMsg, errStack);
-        fullText = `[DEBUG] ${errMsg}`;
+        logError({
+          message: errMsg,
+          stack: errStack || undefined,
+          source: 'chat.sendMessage',
+          context: {
+            mode: currentMode,
+            sessionId: sid,
+            messageCount: contextWindow.length,
+          },
+        });
+        fullText = "Sorry, I couldn't connect right now. Check your API key and network, then try again.";
         setStreamingText(fullText);
       }
 
