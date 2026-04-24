@@ -15,7 +15,7 @@
     },
     "ios": {
       "supportsTablet": false,
-      "bundleIdentifier": "com.placeholder.cbtcompanion",
+      "bundleIdentifier": "com.elliottcrane.cbtcompanion",
       "buildNumber": "1"
     },
     "android": {
@@ -23,7 +23,7 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#F7F5F2"
       },
-      "package": "com.placeholder.cbtcompanion",
+      "package": "com.elliottcrane.cbtcompanion",
       "versionCode": 1
     },
     "web": {

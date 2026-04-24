@@ -204,9 +204,21 @@ export default function ChatScreen() {
 
       let fullText = '';
       try {
-        const response = await fetch('/api/chat', {
+        const anonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+        const chatEndpoint =
+          process.env.EXPO_PUBLIC_CHAT_API_URL ?? '/api/chat';
+        const isSupabaseFunction = chatEndpoint.includes('/functions/v1/');
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        if (isSupabaseFunction && anonKey) {
+          headers.Authorization = `Bearer ${anonKey}`;
+          headers.apikey = anonKey;
+        }
+
+        const response = await fetch(chatEndpoint, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers,
           body: JSON.stringify({ messages: contextWindow, systemPromptText }),
         });
 
