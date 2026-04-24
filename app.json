@@ -37,6 +37,10 @@
         "android.permission.RECEIVE_BOOT_COMPLETED"
       ]
     },
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    },
     "plugins": [
       "expo-router",
       "expo-sqlite",
