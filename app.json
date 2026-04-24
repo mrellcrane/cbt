@@ -16,7 +16,7 @@
       "supportsTablet": false,
       "bundleIdentifier": "com.elliottcrane.cbtcompanion",
       "infoPlist": {
-        "UIBackgroundModes": ["fetch", "processing", "remote-notification"],
+        "UIBackgroundModes": ["fetch", "remote-notification"],
         "NSMicrophoneUsageDescription": "CBT Friend uses the microphone so you can speak your journal entries and thought records out loud instead of typing.",
         "NSSpeechRecognitionUsageDescription": "CBT Friend uses speech recognition to turn your spoken reflections into text for thought records and journaling.",
         "NSFaceIDUsageDescription": "CBT Friend uses Face ID to keep your private journal and mood history secure."
