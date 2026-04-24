@@ -408,7 +408,7 @@ export default function ChatScreen() {
           </View>
           <View>
             <Text style={styles.headerName}>Ember</Text>
-            <Text style={styles.headerSub}>CBT Companion</Text>
+            <Text style={styles.headerSub}>CBT Friend</Text>
           </View>
         </View>
         <View style={styles.headerRight}>

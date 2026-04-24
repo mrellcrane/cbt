@@ -130,7 +130,7 @@ export default function SettingsScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>About</Text>
           <View style={styles.infoCard}>
-            <Text style={styles.appName}>CBT Companion</Text>
+            <Text style={styles.appName}>CBT Friend</Text>
             <Text style={styles.appSubtitle}>
               A supportive tool for cognitive behavioral therapy exercises.
             </Text>
