@@ -210,25 +210,32 @@ export default function ChatScreen() {
           body: JSON.stringify({ messages: contextWindow, systemPromptText }),
         });
 
-        if (!response.ok || !response.body) {
+        if (!response.ok) {
           const errText = await response.text();
           console.error('[chat] API responded with error:', response.status, errText);
           throw new Error(`HTTP ${response.status}: ${errText || 'API error'}`);
         }
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-
-        while (true) {
-          if (abortRef.current) {
-            reader.cancel();
-            break;
-          }
-          const { done, value } = await reader.read();
-          if (done) break;
-          const chunk = decoder.decode(value, { stream: true });
-          fullText += chunk;
+        // React Native fetch doesn't expose response.body as a ReadableStream,
+        // so fall back to response.text() (full reply at once) when streaming
+        // isn't available. Web keeps the incremental streaming UX.
+        if (!response.body || typeof response.body.getReader !== 'function') {
+          fullText = await response.text();
           setStreamingText(fullText);
+        } else {
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          while (true) {
+            if (abortRef.current) {
+              reader.cancel();
+              break;
+            }
+            const { done, value } = await reader.read();
+            if (done) break;
+            const chunk = decoder.decode(value, { stream: true });
+            fullText += chunk;
+            setStreamingText(fullText);
+          }
         }
       } catch (err) {
         const errMsg = err instanceof Error ? err.message : String(err);
