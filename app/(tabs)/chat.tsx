@@ -38,6 +38,7 @@ import { Colors } from '@/constants/colors';
 import { LESSONS } from '@/lib/lessons';
 import { router } from 'expo-router';
 import { logError } from '@/lib/errorLog';
+import { useEmberSpeech } from '@/hooks/useEmberSpeech';
 
 // Strip the [[THOUGHT_RECORD_COMPLETE]] and [[GRATITUDE_COMPLETE]] blocks from
 // display text while returning the raw payload for DB persistence.
@@ -132,6 +133,8 @@ export default function ChatScreen() {
   const listRef = useRef<FlatList>(null);
   const abortRef = useRef<boolean>(false);
 
+  const { enabled: ttsEnabled, setEnabled: setTtsEnabled, speak, stop: stopSpeech } = useEmberSpeech();
+
   // Load data when tab is focused
   useFocusEffect(
     useCallback(() => {
@@ -164,6 +167,8 @@ export default function ChatScreen() {
   const sendMessage = useCallback(
     async (userText: string, overrideMode?: Mode, overrideContext?: string) => {
       if (isStreaming) return;
+
+      stopSpeech();
 
       const currentMode = overrideMode ?? mode;
       const currentContext = overrideContext ?? exerciseContext;
@@ -308,8 +313,10 @@ export default function ChatScreen() {
 
       setIsStreaming(false);
       setStreamingText('');
+
+      if (display.trim()) speak(display);
     },
-    [isStreaming, mode, exerciseContext, sessionId, userName, messages, activeThoughtRecordId],
+    [isStreaming, mode, exerciseContext, sessionId, userName, messages, activeThoughtRecordId, speak, stopSpeech],
   );
 
   // ── Quick action handlers ──────────────────────────────────────────────────
@@ -384,6 +391,7 @@ export default function ChatScreen() {
 
   const startNewChat = () => {
     abortRef.current = true;
+    stopSpeech();
     setMessages([]);
     setStreamingText('');
     setIsStreaming(false);
@@ -419,6 +427,18 @@ export default function ChatScreen() {
               <Text style={styles.modeBadgeText}>{mode.replace('_', ' ')}</Text>
             </View>
           )}
+          <TouchableOpacity
+            onPress={() => {
+              if (ttsEnabled) stopSpeech();
+              setTtsEnabled(!ttsEnabled);
+            }}
+            activeOpacity={0.7}
+            accessibilityRole="button"
+            accessibilityLabel={ttsEnabled ? 'Mute Ember' : 'Let Ember speak aloud'}
+            style={styles.speakerBtn}
+          >
+            <Text style={styles.speakerIcon}>{ttsEnabled ? '🔊' : '🔈'}</Text>
+          </TouchableOpacity>
           {messages.length > 0 && (
             <TouchableOpacity onPress={startNewChat} activeOpacity={0.75}>
               <Text style={styles.newChatBtn}>New</Text>
@@ -537,6 +557,13 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     paddingHorizontal: 8,
     paddingVertical: 4,
+  },
+  speakerBtn: {
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  speakerIcon: {
+    fontSize: 18,
   },
   avatarSmall: {
     width: 36,
