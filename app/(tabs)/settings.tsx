@@ -9,12 +9,14 @@ import {
   TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useFocusEffect, router } from 'expo-router';
+import { useFocusEffect } from 'expo-router';
 import { getSetting, setSetting } from '@/lib/db/queries';
-import { getDb } from '@/lib/db/schema';
+import { supabase } from '@/lib/supabase';
+import { useAuth } from '@/lib/auth/AuthContext';
 import { Colors } from '@/constants/colors';
 
 export default function SettingsScreen() {
+  const { user, signOut } = useAuth();
   const [userName, setUserName] = useState('');
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState('');
@@ -45,14 +47,13 @@ export default function SettingsScreen() {
           text: 'Delete everything',
           style: 'destructive',
           onPress: async () => {
-            const db = await getDb();
-            await db.execAsync(`
-              DELETE FROM mood_entries;
-              DELETE FROM thought_records;
-              DELETE FROM gratitude_entries;
-              DELETE FROM messages;
-              DELETE FROM settings WHERE key != 'onboarding_complete';
-            `);
+            if (!user) return;
+            await Promise.all([
+              supabase.from('mood_entries').delete().eq('user_id', user.id),
+              supabase.from('thought_records').delete().eq('user_id', user.id),
+              supabase.from('gratitude_entries').delete().eq('user_id', user.id),
+              supabase.from('messages').delete().eq('user_id', user.id),
+            ]);
             Alert.alert('Done', 'All data has been cleared.');
           },
         },
@@ -60,23 +61,11 @@ export default function SettingsScreen() {
     );
   };
 
-  const resetOnboarding = () => {
-    Alert.alert(
-      'Reset app?',
-      'This will reset the app to the first-launch state, including onboarding.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Reset',
-          style: 'destructive',
-          onPress: async () => {
-            const db = await getDb();
-            await db.execAsync(`DELETE FROM settings;`);
-            router.replace('/onboarding');
-          },
-        },
-      ],
-    );
+  const handleSignOut = () => {
+    Alert.alert('Sign out?', 'You will need to sign in again to access your data.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Sign out', style: 'destructive', onPress: signOut },
+    ]);
   };
 
   return (
@@ -124,6 +113,12 @@ export default function SettingsScreen() {
               </TouchableOpacity>
             )}
           </View>
+          {user?.email ? (
+            <View style={styles.row}>
+              <Text style={styles.rowLabel}>Email</Text>
+              <Text style={styles.rowValueMuted}>{user.email}</Text>
+            </View>
+          ) : null}
         </View>
 
         {/* About */}
@@ -156,12 +151,17 @@ export default function SettingsScreen() {
           >
             <Text style={styles.destructiveText}>Clear all data</Text>
           </TouchableOpacity>
+        </View>
+
+        {/* Account */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Account</Text>
           <TouchableOpacity
-            style={[styles.destructiveRow, { marginTop: 8 }]}
-            onPress={resetOnboarding}
+            style={styles.destructiveRow}
+            onPress={handleSignOut}
             activeOpacity={0.8}
           >
-            <Text style={styles.destructiveText}>Reset app (re-run onboarding)</Text>
+            <Text style={styles.destructiveText}>Sign out</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -202,6 +202,7 @@ const styles = StyleSheet.create({
   },
   rowLabel: { fontSize: 15, color: Colors.text, fontWeight: '500' },
   rowValue: { fontSize: 15, color: Colors.primary, fontWeight: '600' },
+  rowValueMuted: { fontSize: 15, color: Colors.textMuted },
   nameEditRow: {
     flexDirection: 'row',
     alignItems: 'center',

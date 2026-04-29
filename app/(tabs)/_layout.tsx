@@ -1,9 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { Tabs, router } from 'expo-router';
+import { Tabs } from 'expo-router';
 import { View, Text, StyleSheet } from 'react-native';
-import { getSetting } from '@/lib/db/queries';
+import { getSetting, setSetting } from '@/lib/db/queries';
 import { DisclaimerModal } from '@/components/DisclaimerModal';
-import { setSetting } from '@/lib/db/queries';
 import { Colors } from '@/constants/colors';
 
 function TabIcon({
@@ -27,19 +26,11 @@ export default function TabsLayout() {
   const [disclaimerVisible, setDisclaimerVisible] = useState(false);
 
   useEffect(() => {
-    // Check whether user has seen the disclaimer and completed onboarding.
-    (async () => {
-      const onboarded = await getSetting('onboarding_complete');
-      const disclaimerSeen = await getSetting('disclaimer_seen');
-
-      if (!onboarded) {
-        router.replace('/onboarding');
-        return;
-      }
-      if (!disclaimerSeen) {
+    getSetting('disclaimer_seen').then((seen) => {
+      if (!seen || seen === 'false') {
         setDisclaimerVisible(true);
       }
-    })();
+    });
   }, []);
 
   const handleAcceptDisclaimer = async () => {

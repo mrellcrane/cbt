@@ -122,7 +122,7 @@ export default function ChatScreen() {
   const [showMoodSlider, setShowMoodSlider] = useState(false);
   const [showCrisisCard, setShowCrisisCard] = useState(false);
   const [activeThoughtRecordId, setActiveThoughtRecordId] = useState<
-    number | null
+    string | null
   >(null);
   const [checkedInToday, setCheckedInToday] = useState(false);
   // Track which lesson we've already auto-started so we don't repeat it.
