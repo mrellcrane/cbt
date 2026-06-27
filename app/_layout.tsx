@@ -7,6 +7,7 @@ import * as SplashScreen from 'expo-splash-screen';
 import { useDatabase } from '@/hooks/useDatabase';
 import { Colors } from '@/constants/colors';
 import { VersionBadge } from '@/components/VersionBadge';
+import { UpdateBanner } from '@/components/UpdateBanner';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -38,6 +39,7 @@ export default function RootLayout() {
         <Stack.Screen name="+not-found" />
       </Stack>
       <VersionBadge />
+      <UpdateBanner />
     </>
   );
 }
