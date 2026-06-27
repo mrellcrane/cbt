@@ -32,7 +32,15 @@
     },
     "plugins": [
       "expo-router",
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-audio",
+      [
+        "expo-speech-recognition",
+        {
+          "microphonePermission": "Ember uses the microphone so you can talk to it hands-free while driving.",
+          "speechRecognitionPermission": "Ember uses on-device speech recognition to understand what you say."
+        }
+      ]
     ],
     "experiments": {
       "typedRoutes": true

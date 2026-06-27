@@ -383,6 +383,13 @@ export default function ChatScreen() {
               <Text style={styles.modeBadgeText}>{mode.replace('_', ' ')}</Text>
             </View>
           )}
+          <TouchableOpacity
+            onPress={() => router.push('/driving')}
+            activeOpacity={0.75}
+            hitSlop={8}
+          >
+            <Text style={styles.driveBtn}>🚗</Text>
+          </TouchableOpacity>
           {messages.length > 0 && (
             <TouchableOpacity onPress={startNewChat} activeOpacity={0.75}>
               <Text style={styles.newChatBtn}>New</Text>
@@ -447,6 +454,19 @@ export default function ChatScreen() {
                       </TouchableOpacity>
                     ))}
                   </View>
+                  <TouchableOpacity
+                    style={styles.driveCard}
+                    onPress={() => router.push('/driving')}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={styles.driveCardIcon}>🚗</Text>
+                    <View style={styles.driveCardTextWrap}>
+                      <Text style={styles.driveCardLabel}>Driving mode</Text>
+                      <Text style={styles.driveCardSub}>
+                        Talk hands-free — Ember listens and replies out loud
+                      </Text>
+                    </View>
+                  </TouchableOpacity>
                   <Text style={styles.orJust}>or just say hello below</Text>
                 </View>
               ) : null
@@ -501,6 +521,32 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     paddingHorizontal: 8,
     paddingVertical: 4,
+  },
+  driveBtn: { fontSize: 20, paddingHorizontal: 4 },
+  driveCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 14,
+    backgroundColor: Colors.primary,
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
+    marginTop: 20,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+  },
+  driveCardIcon: { fontSize: 30 },
+  driveCardTextWrap: { flex: 1 },
+  driveCardLabel: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  driveCardSub: {
+    color: '#EAF5F2',
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
   },
   avatarSmall: {
     width: 36,
