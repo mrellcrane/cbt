@@ -1,6 +1,7 @@
 {
   "cli": {
-    "version": ">= 7.0.0"
+    "version": ">= 7.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "development": {
@@ -14,24 +15,20 @@
       "distribution": "internal",
       "ios": {
         "simulator": false
-      },
-      "env": {
-        "ANTHROPIC_API_KEY": "REPLACE_WITH_YOUR_KEY"
       }
     },
     "production": {
-      "autoIncrement": true,
-      "env": {
-        "ANTHROPIC_API_KEY": "REPLACE_WITH_YOUR_KEY"
-      }
+      "autoIncrement": true
     }
   },
   "submit": {
     "production": {
       "ios": {
-        "appleId": "YOUR_APPLE_ID@example.com",
-        "ascAppId": "YOUR_APP_STORE_CONNECT_APP_ID",
-        "appleTeamId": "YOUR_APPLE_TEAM_ID"
+        "ascAppId": "6763616652",
+        "appleTeamId": "YPLYQQ2UBF",
+        "ascApiKeyPath": "/Users/elliottcrane/.appstoreconnect/private_keys/AuthKey_ZWJFN23ZDH.p8",
+        "ascApiKeyId": "ZWJFN23ZDH",
+        "ascApiKeyIssuerId": "7a840685-8bb4-482b-99b8-bbfd23e541c6"
       }
     }
   }
