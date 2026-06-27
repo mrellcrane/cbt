@@ -13,10 +13,15 @@ import {
   Platform,
   StyleSheet,
   ScrollView,
+  Switch,
+  Modal,
+  TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { fetch } from 'expo/fetch';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import Constants from 'expo-constants';
 import { apiUrl } from '@/lib/api';
 import { useTts } from '@/hooks/useTts';
 import { ChatBubble } from '@/components/ChatBubble';
@@ -32,6 +37,7 @@ import {
   insertMoodEntry,
   hasDoneCheckInToday,
   getSetting,
+  setSetting,
   insertThoughtRecord,
   completeThoughtRecord,
   insertGratitudeEntry,
@@ -138,6 +144,15 @@ export default function ChatScreen() {
   // which message is currently being read aloud.
   const tts = useTts();
   const [playingId, setPlayingId] = useState<string | null>(null);
+  const playMessage = useCallback(
+    (id: string, text: string) => {
+      setPlayingId(id);
+      tts.speak(text).finally(() => {
+        setPlayingId((curr) => (curr === id ? null : curr));
+      });
+    },
+    [tts],
+  );
   const handleTogglePlay = useCallback(
     (id: string, text: string) => {
       tts.stop();
@@ -145,13 +160,67 @@ export default function ChatScreen() {
         setPlayingId(null);
         return;
       }
-      setPlayingId(id);
-      tts.speak(text).finally(() => {
-        setPlayingId((curr) => (curr === id ? null : curr));
-      });
+      playMessage(id, text);
     },
-    [playingId, tts],
+    [playingId, tts, playMessage],
   );
+
+  // Auto-play setting: when on, Ember's replies are read aloud automatically.
+  const [autoPlay, setAutoPlay] = useState(false);
+  const autoPlayRef = useRef(false);
+  autoPlayRef.current = autoPlay;
+  const toggleAutoPlay = useCallback(
+    (next: boolean) => {
+      setAutoPlay(next);
+      setSetting('autoplay', next ? 'on' : 'off');
+      if (!next) {
+        tts.stop();
+        setPlayingId(null);
+      }
+    },
+    [tts],
+  );
+
+  // Feedback modal — submissions are stored server-side (GitHub issue).
+  const [showFeedback, setShowFeedback] = useState(false);
+  const [feedbackText, setFeedbackText] = useState('');
+  const [sendingFeedback, setSendingFeedback] = useState(false);
+  const [feedbackSent, setFeedbackSent] = useState(false);
+  const [feedbackError, setFeedbackError] = useState(false);
+  const openFeedback = useCallback(() => {
+    setFeedbackError(false);
+    setFeedbackSent(false);
+    setShowFeedback(true);
+  }, []);
+  const submitFeedback = useCallback(async () => {
+    const text = feedbackText.trim();
+    if (!text || sendingFeedback) return;
+    setSendingFeedback(true);
+    setFeedbackError(false);
+    try {
+      const res = await fetch(apiUrl('/api/feedback'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          text,
+          appVersion: Constants.expoConfig?.version ?? '',
+          platform: Platform.OS,
+          when: new Date().toISOString(),
+        }),
+      });
+      if (!res.ok) throw new Error(`feedback http ${res.status}`);
+      setFeedbackSent(true);
+      setFeedbackText('');
+      setTimeout(() => {
+        setShowFeedback(false);
+        setFeedbackSent(false);
+      }, 1200);
+    } catch {
+      setFeedbackError(true);
+    } finally {
+      setSendingFeedback(false);
+    }
+  }, [feedbackText, sendingFeedback]);
 
   // Load data when tab is focused
   useFocusEffect(
@@ -159,6 +228,9 @@ export default function ChatScreen() {
       (async () => {
         const name = (await getSetting('user_name')) ?? '';
         setUserName(name);
+
+        const ap = (await getSetting('autoplay')) === 'on';
+        setAutoPlay(ap);
 
         const doneToday = await hasDoneCheckInToday();
         setCheckedInToday(doneToday);
@@ -272,6 +344,11 @@ export default function ChatScreen() {
         content: display,
         sessionId: sid,
       });
+
+      // Auto-play Ember's reply aloud when the setting is on.
+      if (autoPlayRef.current && display) {
+        playMessage(assistantMsg.id, display);
+      }
 
       // Persist thought record if complete
       if (thoughtRecord && activeThoughtRecordId) {
@@ -420,6 +497,27 @@ export default function ChatScreen() {
         </View>
       </View>
 
+      {/* Control bar: auto-play toggle + feedback */}
+      <View style={styles.controlBar}>
+        <View style={styles.autoPlayWrap}>
+          <Text style={styles.controlLabel}>🔊 Auto-play replies</Text>
+          <Switch
+            value={autoPlay}
+            onValueChange={toggleAutoPlay}
+            trackColor={{ false: Colors.border, true: Colors.primaryLight }}
+            thumbColor={autoPlay ? Colors.primary : '#f4f3f4'}
+          />
+        </View>
+        <TouchableOpacity
+          style={styles.feedbackBtn}
+          onPress={openFeedback}
+          activeOpacity={0.8}
+          hitSlop={8}
+        >
+          <Text style={styles.feedbackBtnText}>✏️ Feedback</Text>
+        </TouchableOpacity>
+      </View>
+
       <KeyboardAvoidingView
         style={styles.flex}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -527,6 +625,69 @@ export default function ChatScreen() {
           />
         )}
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={showFeedback}
+        animationType="slide"
+        transparent
+        onRequestClose={() => setShowFeedback(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Send feedback</Text>
+            <Text style={styles.modalSub}>
+              Tell me what to improve, what's broken, or any idea. It goes
+              straight to the developer.
+            </Text>
+            <TextInput
+              style={styles.feedbackInput}
+              placeholder="What's working, what's not, ideas…"
+              placeholderTextColor={Colors.textMuted}
+              value={feedbackText}
+              onChangeText={setFeedbackText}
+              multiline
+              autoFocus
+              editable={!sendingFeedback && !feedbackSent}
+            />
+            {feedbackError && (
+              <Text style={styles.feedbackErr}>
+                Couldn't send. Check your connection and try again.
+              </Text>
+            )}
+            {feedbackSent ? (
+              <Text style={styles.feedbackOk}>✓ Thanks! Feedback sent.</Text>
+            ) : (
+              <View style={styles.modalActions}>
+                <TouchableOpacity
+                  style={[styles.modalBtn, styles.modalCancel]}
+                  onPress={() => setShowFeedback(false)}
+                  disabled={sendingFeedback}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.modalCancelText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.modalBtn,
+                    styles.modalSend,
+                    (!feedbackText.trim() || sendingFeedback) &&
+                      styles.modalSendDisabled,
+                  ]}
+                  onPress={submitFeedback}
+                  disabled={!feedbackText.trim() || sendingFeedback}
+                  activeOpacity={0.8}
+                >
+                  {sendingFeedback ? (
+                    <ActivityIndicator color="#fff" size="small" />
+                  ) : (
+                    <Text style={styles.modalSendText}>Send</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -546,6 +707,74 @@ const styles = StyleSheet.create({
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   headerRight: { flexDirection: 'row', alignItems: 'center', gap: 10 },
+  controlBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    backgroundColor: Colors.surfaceAlt,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  autoPlayWrap: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  controlLabel: { fontSize: 14, color: Colors.text, fontWeight: '600' },
+  feedbackBtn: {
+    paddingVertical: 7,
+    paddingHorizontal: 14,
+    borderRadius: 16,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  feedbackBtnText: { fontSize: 14, color: Colors.primary, fontWeight: '700' },
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.4)',
+    justifyContent: 'flex-end',
+  },
+  modalCard: {
+    backgroundColor: Colors.surface,
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    padding: 22,
+    paddingBottom: 36,
+    gap: 12,
+  },
+  modalTitle: { fontSize: 20, fontWeight: '700', color: Colors.text },
+  modalSub: { fontSize: 14, color: Colors.textSecondary, lineHeight: 20 },
+  feedbackInput: {
+    minHeight: 120,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    borderRadius: 14,
+    padding: 14,
+    fontSize: 16,
+    color: Colors.text,
+    textAlignVertical: 'top',
+    backgroundColor: Colors.background,
+  },
+  feedbackErr: { color: Colors.danger, fontSize: 14 },
+  feedbackOk: {
+    color: Colors.success,
+    fontSize: 16,
+    fontWeight: '700',
+    textAlign: 'center',
+    paddingVertical: 10,
+  },
+  modalActions: { flexDirection: 'row', gap: 12, marginTop: 4 },
+  modalBtn: {
+    flex: 1,
+    height: 50,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  modalCancel: { backgroundColor: Colors.surfaceAlt },
+  modalCancelText: { color: Colors.text, fontSize: 16, fontWeight: '600' },
+  modalSend: { backgroundColor: Colors.primary },
+  modalSendDisabled: { opacity: 0.5 },
+  modalSendText: { color: '#fff', fontSize: 16, fontWeight: '700' },
   newChatBtn: {
     fontSize: 14,
     color: Colors.primary,
