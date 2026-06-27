@@ -53,6 +53,14 @@ export function useTts() {
       cancelledRef.current = false;
       setIsSpeaking(true);
 
+      // Configure the audio session up front so BOTH the ElevenLabs player and
+      // the device-TTS fallback are audible even when the ringer switch is off.
+      try {
+        await setAudioModeAsync({ playsInSilentMode: true });
+      } catch {
+        // non-fatal — playback may still work with the default session
+      }
+
       try {
         const res = await fetch(apiUrl('/api/speak'), {
           method: 'POST',
@@ -70,10 +78,6 @@ export function useTts() {
           encoding: 'base64',
         });
         if (cancelledRef.current) return;
-
-        // playsInSilentMode so Ember is audible even with the ringer off — the
-        // common case in a car.
-        await setAudioModeAsync({ playsInSilentMode: true });
 
         const player = createAudioPlayer({ uri });
         playerRef.current = player;
