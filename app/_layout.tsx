@@ -6,6 +6,7 @@ import { View, ActivityIndicator } from 'react-native';
 import * as SplashScreen from 'expo-splash-screen';
 import { useDatabase } from '@/hooks/useDatabase';
 import { Colors } from '@/constants/colors';
+import { VersionBadge } from '@/components/VersionBadge';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -36,6 +37,7 @@ export default function RootLayout() {
         <Stack.Screen name="driving" options={{ animation: 'fade' }} />
         <Stack.Screen name="+not-found" />
       </Stack>
+      <VersionBadge />
     </>
   );
 }

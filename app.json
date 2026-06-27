@@ -18,8 +18,12 @@
       "bundleIdentifier": "com.elliottcrane.cbtcompanion",
       "buildNumber": "1",
       "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false,
         "NSSpeechRecognitionUsageDescription": "Ember uses on-device speech recognition to understand what you say.",
         "NSMicrophoneUsageDescription": "Ember uses the microphone so you can talk to it hands-free while driving."
+      },
+      "runtimeVersion": {
+        "policy": "appVersion"
       }
     },
     "android": {
@@ -30,6 +34,10 @@
       "package": "com.elliottcrane.cbtcompanion",
       "versionCode": 1,
       "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.MODIFY_AUDIO_SETTINGS",
+        "android.permission.FOREGROUND_SERVICE",
+        "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",
         "android.permission.FOREGROUND_SERVICE",
@@ -66,6 +74,9 @@
         "projectId": "337ad212-4549-4c01-8376-4205af4034aa"
       }
     },
-    "owner": "elliottcrane"
+    "owner": "elliottcrane",
+    "updates": {
+      "url": "https://u.expo.dev/337ad212-4549-4c01-8376-4205af4034aa"
+    }
   }
 }
