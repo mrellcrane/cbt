@@ -8,6 +8,7 @@ import { useDatabase } from '@/hooks/useDatabase';
 import { Colors } from '@/constants/colors';
 import { VersionBadge } from '@/components/VersionBadge';
 import { UpdateBanner } from '@/components/UpdateBanner';
+import { PushRegistration } from '@/components/PushRegistration';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -40,6 +41,7 @@ export default function RootLayout() {
       </Stack>
       <VersionBadge />
       <UpdateBanner />
+      <PushRegistration />
     </>
   );
 }

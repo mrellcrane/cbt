@@ -58,6 +58,7 @@
       ],
       "expo-sqlite",
       "expo-audio",
+      "expo-notifications",
       [
         "expo-speech-recognition",
         {
@@ -78,6 +79,9 @@
     "owner": "elliottcrane",
     "updates": {
       "url": "https://u.expo.dev/337ad212-4549-4c01-8376-4205af4034aa"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
     }
   }
 }
