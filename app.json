@@ -20,7 +20,8 @@
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSSpeechRecognitionUsageDescription": "Ember uses on-device speech recognition to understand what you say.",
-        "NSMicrophoneUsageDescription": "Ember uses the microphone so you can talk to it hands-free while driving."
+        "NSMicrophoneUsageDescription": "Ember uses the microphone so you can talk to it hands-free while driving.",
+        "NSPhotoLibraryUsageDescription": "Ember can access your photo library if you choose to attach an image to a conversation."
       },
       "runtimeVersion": {
         "policy": "appVersion"
