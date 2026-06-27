@@ -18,6 +18,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { fetch } from 'expo/fetch';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { apiUrl } from '@/lib/api';
+import { useTts } from '@/hooks/useTts';
 import { ChatBubble } from '@/components/ChatBubble';
 import { ChatInput } from '@/components/ChatInput';
 import { MoodSlider } from '@/components/MoodSlider';
@@ -132,6 +133,25 @@ export default function ChatScreen() {
 
   const listRef = useRef<FlatList>(null);
   const abortRef = useRef<boolean>(false);
+
+  // Tap-to-play audio for Ember's messages. One TTS engine; playingId tracks
+  // which message is currently being read aloud.
+  const tts = useTts();
+  const [playingId, setPlayingId] = useState<string | null>(null);
+  const handleTogglePlay = useCallback(
+    (id: string, text: string) => {
+      tts.stop();
+      if (playingId === id) {
+        setPlayingId(null);
+        return;
+      }
+      setPlayingId(id);
+      tts.speak(text).finally(() => {
+        setPlayingId((curr) => (curr === id ? null : curr));
+      });
+    },
+    [playingId, tts],
+  );
 
   // Load data when tab is focused
   useFocusEffect(
@@ -422,7 +442,16 @@ export default function ChatScreen() {
             data={allDisplayMessages}
             keyExtractor={(item) => item.id}
             renderItem={({ item }) => (
-              <ChatBubble role={item.role} content={item.content} />
+              <ChatBubble
+                role={item.role}
+                content={item.content}
+                isPlaying={playingId === item.id}
+                onTogglePlay={
+                  item.role === 'assistant'
+                    ? () => handleTogglePlay(item.id, item.content)
+                    : undefined
+                }
+              />
             )}
             contentContainerStyle={styles.listContent}
             ListHeaderComponent={

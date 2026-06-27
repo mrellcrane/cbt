@@ -1,15 +1,32 @@
 import React from 'react';
-import { View, Text, ActivityIndicator, StyleSheet } from 'react-native';
+import {
+  View,
+  Text,
+  ActivityIndicator,
+  TouchableOpacity,
+  StyleSheet,
+} from 'react-native';
 import { Colors } from '@/constants/colors';
 
 interface Props {
   role: 'user' | 'assistant';
   content: string;
   isStreaming?: boolean;
+  /** When provided (Ember messages), shows a tap-to-play audio button. */
+  onTogglePlay?: () => void;
+  isPlaying?: boolean;
 }
 
-export function ChatBubble({ role, content, isStreaming = false }: Props) {
+export function ChatBubble({
+  role,
+  content,
+  isStreaming = false,
+  onTogglePlay,
+  isPlaying = false,
+}: Props) {
   const isUser = role === 'user';
+  const showPlay =
+    !isUser && !!onTogglePlay && !isStreaming && content.length > 0;
 
   return (
     <View
@@ -55,6 +72,18 @@ export function ChatBubble({ role, content, isStreaming = false }: Props) {
           </Text>
         )}
       </View>
+      {showPlay && (
+        <TouchableOpacity
+          onPress={onTogglePlay}
+          style={[styles.playBtn, isPlaying && styles.playBtnActive]}
+          hitSlop={12}
+          activeOpacity={0.8}
+          accessibilityRole="button"
+          accessibilityLabel={isPlaying ? 'Stop playback' : 'Play message aloud'}
+        >
+          <Text style={styles.playIcon}>{isPlaying ? '◼' : '▶'}</Text>
+        </TouchableOpacity>
+      )}
     </View>
   );
 }
@@ -115,4 +144,26 @@ const styles = StyleSheet.create({
   textUser: { color: Colors.bubbleUserText },
   textBot: { color: Colors.bubbleBotText },
   typingRow: { flexDirection: 'row', alignItems: 'center' },
+  playBtn: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 8,
+    marginBottom: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 3,
+    elevation: 2,
+  },
+  playBtnActive: { backgroundColor: Colors.primaryDark },
+  playIcon: {
+    color: '#fff',
+    fontSize: 18,
+    marginLeft: 2,
+    fontWeight: '700',
+  },
 });
