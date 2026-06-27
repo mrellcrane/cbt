@@ -10,16 +10,21 @@ const PACIFIC_TZ = 'America/Los_Angeles';
 // the platform's native date APIs on iOS, so it converts correctly on-device.
 // (dayjs's timezone plugin did not convert under Hermes and showed UTC.)
 function formatPacific(date: Date): string {
-  const parts = new Intl.DateTimeFormat('en-US', {
+  const datePart = date.toLocaleDateString('en-US', {
     timeZone: PACIFIC_TZ,
     month: 'short',
     day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-    hour12: true,
-  }).formatToParts(date);
-  const get = (t: string) => parts.find((p) => p.type === t)?.value ?? '';
-  return `${get('month')} ${get('day')} · ${get('hour')}:${get('minute')}${get('dayPeriod').toLowerCase()} PT`;
+  });
+  const timePart = date
+    .toLocaleTimeString('en-US', {
+      timeZone: PACIFIC_TZ,
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true,
+    })
+    .replace(/\s?AM$/, 'am')
+    .replace(/\s?PM$/, 'pm');
+  return `${datePart} · ${timePart} PT`;
 }
 
 // A tiny, non-interactive overlay in the top-left showing which build/update is
