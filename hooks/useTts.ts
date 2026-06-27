@@ -7,9 +7,9 @@ import {
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Speech from 'expo-speech';
 
-// Ember's voice. Primary path: Deepgram Aura (synthesized server-side, played
+// Ember's voice. Primary path: ElevenLabs (synthesized server-side, played
 // from a cached file). Fallback: the device's built-in TTS, so Driving Mode is
-// never left silent if Deepgram is unavailable or no key is configured.
+// never left silent if the TTS service is unavailable or no key is configured.
 let fileCounter = 0;
 
 export function useTts() {
@@ -89,7 +89,7 @@ export function useTts() {
 
         cleanupPlayer();
       } catch (err) {
-        // Deepgram failed — fall back to on-device TTS unless we were cancelled.
+        // ElevenLabs failed — fall back to on-device TTS unless we were cancelled.
         if (!cancelledRef.current) {
           await speakWithDevice(text);
         }

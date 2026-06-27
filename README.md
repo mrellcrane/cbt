@@ -167,7 +167,7 @@ The model is instructed to embed `[[THOUGHT_RECORD_COMPLETE]]` and `[[GRATITUDE_
 - **Add a distortion**: append to `constants/distortions.ts`
 - **Change the persona**: edit the `persona` string in `lib/ai/systemPrompt.ts`
 - **Change the model**: set `ANTHROPIC_MODEL` in your `.env`
-- **Voice / Driving mode**: tap 🚗 in the chat header (or the card on the welcome screen) to open hands-free mode. Speech-to-text runs **on-device** (`expo-speech-recognition`); Ember's replies are spoken back via **Deepgram Aura** (`expo-speech` is the automatic fallback). See "Driving / voice mode" below.
+- **Voice / Driving mode**: tap 🚗 in the chat header (or the card on the welcome screen) to open hands-free mode. Speech-to-text runs **on-device** (`expo-speech-recognition`); Ember's replies are spoken back via **ElevenLabs** (`expo-speech` is the automatic fallback). See "Driving / voice mode" below.
 
 ---
 
@@ -176,21 +176,22 @@ The model is instructed to embed `[[THOUGHT_RECORD_COMPLETE]]` and `[[GRATITUDE_
 A hands-free, low-distraction screen (`app/driving.tsx`) for talking to Ember in the car.
 
 - **Speech-to-text — on-device.** Uses `expo-speech-recognition` (iOS Speech framework / Android), forced on-device. Audio never leaves the phone. Recognition auto-stops on a natural pause, so it's turn-based without tapping.
-- **Text-to-speech — Deepgram Aura.** Ember's reply is synthesized server-side by the `/api/speak` route (key stays off the client, same pattern as `/api/chat`), returned as base64, cached to a file, and played with `expo-audio`. If Deepgram is unavailable, it falls back to the device's built-in voice (`expo-speech`).
+- **Text-to-speech — ElevenLabs.** Ember's reply is synthesized server-side by the `/api/speak` route (key stays off the client, same pattern as `/api/chat`), returned as base64, cached to a file, and played with `expo-audio`. Uses the low-latency Flash v2.5 model. If ElevenLabs is unavailable, it falls back to the device's built-in voice (`expo-speech`).
 - **Auto-listen loop.** After Ember finishes speaking, the mic reopens automatically (toggle with the Auto/Manual button). Tap the big button to interrupt and talk, or to finalize early.
 - **Conversation continuity.** Driving mode reuses the same session and history as the chat tab, so spoken turns show up in History.
 - **Crisis safety.** The same `detectCrisis` gate runs on transcribed speech; it surfaces the 988 card and pauses the auto-listen loop.
 
 > **Heads-up:** on-device speech recognition is a native module, so it does **not** run in plain Expo Go. Use a dev build (`npx expo run:ios`) or an EAS build to exercise voice input. Everything else works in Expo Go.
 
-Set your Deepgram key in `.env`:
+Set your ElevenLabs key in `.env`:
 
 ```bash
-DEEPGRAM_API_KEY=...            # free tier is fine to start
-# DEEPGRAM_TTS_MODEL=aura-2-thalia-en   # optional voice override
+ELEVENLABS_API_KEY=...                       # from elevenlabs.io → Profile → API key
+# ELEVENLABS_VOICE_ID=21m00Tcm4TlvDq8ikWAM   # optional — default is "Rachel"
+# ELEVENLABS_MODEL=eleven_flash_v2_5         # optional — Flash v2.5 is low-latency
 ```
 
-For EAS builds, add it the same way as the Anthropic key (env in `eas.json` or an EAS secret).
+Browse and preview voices in the [ElevenLabs voice library](https://elevenlabs.io/app/voice-library), then drop the voice ID into `ELEVENLABS_VOICE_ID`. For EAS builds, add the key the same way as the Anthropic key (env in `eas.json` or an EAS secret).
 
 ---
 
