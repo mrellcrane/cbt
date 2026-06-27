@@ -6,6 +6,7 @@ import {
 } from 'expo-audio';
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Speech from 'expo-speech';
+import { apiUrl } from '@/lib/api';
 
 // Ember's voice. Primary path: ElevenLabs (synthesized server-side, played
 // from a cached file). Fallback: the device's built-in TTS, so Driving Mode is
@@ -53,7 +54,7 @@ export function useTts() {
       setIsSpeaking(true);
 
       try {
-        const res = await fetch('/api/speak', {
+        const res = await fetch(apiUrl('/api/speak'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ text }),

@@ -1,4 +1,6 @@
+import { fetch } from 'expo/fetch';
 import { buildSystemPrompt } from './systemPrompt';
+import { apiUrl } from '../api';
 import type { ApiMessage, Mode } from './types';
 
 // Shared streaming client for the /api/chat route. Both the main chat screen and
@@ -27,7 +29,7 @@ export async function streamChatReply(opts: {
     content: m.content,
   }));
 
-  const response = await fetch('/api/chat', {
+  const response = await fetch(apiUrl('/api/chat'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ messages: contextWindow, systemPromptText }),

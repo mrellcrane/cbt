@@ -15,7 +15,9 @@ import {
   ScrollView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { fetch } from 'expo/fetch';
 import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { apiUrl } from '@/lib/api';
 import { ChatBubble } from '@/components/ChatBubble';
 import { ChatInput } from '@/components/ChatInput';
 import { MoodSlider } from '@/components/MoodSlider';
@@ -203,7 +205,7 @@ export default function ChatScreen() {
 
       let fullText = '';
       try {
-        const response = await fetch('/api/chat', {
+        const response = await fetch(apiUrl('/api/chat'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ messages: contextWindow, systemPromptText }),
