@@ -3,7 +3,14 @@ import { View, Text } from 'react-native';
 import Constants from 'expo-constants';
 import * as Updates from 'expo-updates';
 import dayjs from 'dayjs';
+import utc from 'dayjs/plugin/utc';
+import timezone from 'dayjs/plugin/timezone';
 import { Colors } from '@/constants/colors';
+
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+const PACIFIC_TZ = 'America/Los_Angeles';
 
 // A tiny, non-interactive overlay in the top-left showing which build/update is
 // running. `Updates.createdAt` is the publish time of the JS bundle currently
@@ -16,7 +23,7 @@ export function VersionBadge() {
   let stamp = 'dev';
   try {
     if (Updates.createdAt) {
-      stamp = dayjs(Updates.createdAt).format('MMM D · h:mma');
+      stamp = dayjs(Updates.createdAt).tz(PACIFIC_TZ).format('MMM D · h:mma') + ' PT';
     }
   } catch {
     // Updates not available (e.g. dev client) — keep the "dev" fallback.
