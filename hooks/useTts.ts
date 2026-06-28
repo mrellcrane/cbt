@@ -34,9 +34,10 @@ export function useTts() {
     setIsSpeaking(false);
   }, [cleanupPlayer]);
 
-  const speakWithDevice = useCallback((text: string) => {
+  const speakWithDevice = useCallback((text: string, rate: number) => {
     return new Promise<void>((resolve) => {
       Speech.speak(text, {
+        rate,
         onDone: () => resolve(),
         onStopped: () => resolve(),
         onError: () => resolve(),
@@ -45,8 +46,9 @@ export function useTts() {
   }, []);
 
   // Returns once speech has finished (or was cancelled / failed).
+  // `rate` is the playback speed multiplier (1 = normal, 1.5, 2, …).
   const speak = useCallback(
-    async (rawText: string) => {
+    async (rawText: string, rate: number = 1) => {
       const text = rawText.trim();
       if (!text) return;
 
@@ -81,6 +83,13 @@ export function useTts() {
 
         const player = createAudioPlayer({ uri });
         playerRef.current = player;
+        // Apply playback speed with pitch correction so the voice stays natural.
+        try {
+          player.shouldCorrectPitch = true;
+          player.setPlaybackRate(rate, 'high');
+        } catch {
+          // older runtime without rate support — play at normal speed
+        }
 
         await new Promise<void>((resolve) => {
           const sub = player.addListener('playbackStatusUpdate', (status) => {
@@ -96,7 +105,7 @@ export function useTts() {
       } catch (err) {
         // ElevenLabs failed — fall back to on-device TTS unless we were cancelled.
         if (!cancelledRef.current) {
-          await speakWithDevice(text);
+          await speakWithDevice(text, rate);
         }
       } finally {
         if (!cancelledRef.current) setIsSpeaking(false);

@@ -14,9 +14,7 @@ import {
   StyleSheet,
   ScrollView,
   Switch,
-  Modal,
-  TextInput,
-  ActivityIndicator,
+  Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { fetch } from 'expo/fetch';
@@ -118,6 +116,8 @@ const QUICK_ACTIONS: QuickAction[] = [
   },
 ];
 
+const SPEEDS = [1, 1.5, 2];
+
 export default function ChatScreen() {
   const params = useLocalSearchParams<{ lessonId?: string }>();
 
@@ -144,10 +144,23 @@ export default function ChatScreen() {
   // which message is currently being read aloud.
   const tts = useTts();
   const [playingId, setPlayingId] = useState<string | null>(null);
+
+  // Playback speed for spoken audio (1x / 1.5x / 2x), persisted.
+  const [speed, setSpeed] = useState<number>(1);
+  const speedRef = useRef(1);
+  speedRef.current = speed;
+  const cycleSpeed = useCallback(() => {
+    setSpeed((s) => {
+      const next = SPEEDS[(SPEEDS.indexOf(s) + 1) % SPEEDS.length];
+      setSetting('playback_speed', String(next));
+      return next;
+    });
+  }, []);
+
   const playMessage = useCallback(
     (id: string, text: string) => {
       setPlayingId(id);
-      tts.speak(text).finally(() => {
+      tts.speak(text, speedRef.current).finally(() => {
         setPlayingId((curr) => (curr === id ? null : curr));
       });
     },
@@ -181,22 +194,11 @@ export default function ChatScreen() {
     [tts],
   );
 
-  // Feedback modal — submissions are stored server-side (GitHub issue).
-  const [showFeedback, setShowFeedback] = useState(false);
-  const [feedbackText, setFeedbackText] = useState('');
-  const [sendingFeedback, setSendingFeedback] = useState(false);
-  const [feedbackSent, setFeedbackSent] = useState(false);
-  const [feedbackError, setFeedbackError] = useState(false);
-  const openFeedback = useCallback(() => {
-    setFeedbackError(false);
-    setFeedbackSent(false);
-    setShowFeedback(true);
-  }, []);
-  const submitFeedback = useCallback(async () => {
-    const text = feedbackText.trim();
-    if (!text || sendingFeedback) return;
-    setSendingFeedback(true);
-    setFeedbackError(false);
+  // Feedback — a standard native dialog (Alert.prompt); submissions are stored
+  // server-side as a GitHub issue.
+  const submitFeedback = useCallback(async (raw: string) => {
+    const text = (raw ?? '').trim();
+    if (!text) return;
     try {
       const res = await fetch(apiUrl('/api/feedback'), {
         method: 'POST',
@@ -209,18 +211,25 @@ export default function ChatScreen() {
         }),
       });
       if (!res.ok) throw new Error(`feedback http ${res.status}`);
-      setFeedbackSent(true);
-      setFeedbackText('');
-      setTimeout(() => {
-        setShowFeedback(false);
-        setFeedbackSent(false);
-      }, 1200);
+      Alert.alert('Thank you', 'Your feedback was sent.');
     } catch {
-      setFeedbackError(true);
-    } finally {
-      setSendingFeedback(false);
+      Alert.alert('Could not send', 'Check your connection and try again.');
     }
-  }, [feedbackText, sendingFeedback]);
+  }, []);
+  const openFeedback = useCallback(() => {
+    Alert.prompt(
+      'Send feedback',
+      'What should I improve, what is broken, or any idea? It goes straight to the developer.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Send',
+          onPress: (text?: string) => submitFeedback(text ?? ''),
+        },
+      ],
+      'plain-text',
+    );
+  }, [submitFeedback]);
 
   // Load data when tab is focused
   useFocusEffect(
@@ -231,6 +240,9 @@ export default function ChatScreen() {
 
         const ap = (await getSetting('autoplay')) === 'on';
         setAutoPlay(ap);
+
+        const sp = parseFloat((await getSetting('playback_speed')) ?? '1');
+        setSpeed(SPEEDS.includes(sp) ? sp : 1);
 
         const doneToday = await hasDoneCheckInToday();
         setCheckedInToday(doneToday);
@@ -497,16 +509,25 @@ export default function ChatScreen() {
         </View>
       </View>
 
-      {/* Control bar: auto-play toggle + feedback */}
+      {/* Control bar: auto-play toggle + playback speed + feedback */}
       <View style={styles.controlBar}>
         <View style={styles.autoPlayWrap}>
-          <Text style={styles.controlLabel}>🔊 Auto-play replies</Text>
+          <Text style={styles.controlLabel}>🔊 Auto-play</Text>
           <Switch
             value={autoPlay}
             onValueChange={toggleAutoPlay}
             trackColor={{ false: Colors.border, true: Colors.primaryLight }}
             thumbColor={autoPlay ? Colors.primary : '#f4f3f4'}
           />
+          <TouchableOpacity
+            style={styles.speedBtn}
+            onPress={cycleSpeed}
+            activeOpacity={0.8}
+            hitSlop={8}
+            accessibilityLabel={`Playback speed ${speed}x, tap to change`}
+          >
+            <Text style={styles.speedBtnText}>{speed}×</Text>
+          </TouchableOpacity>
         </View>
         <TouchableOpacity
           style={styles.feedbackBtn}
@@ -625,69 +646,6 @@ export default function ChatScreen() {
           />
         )}
       </KeyboardAvoidingView>
-
-      <Modal
-        visible={showFeedback}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setShowFeedback(false)}
-      >
-        <View style={styles.modalBackdrop}>
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Send feedback</Text>
-            <Text style={styles.modalSub}>
-              Tell me what to improve, what's broken, or any idea. It goes
-              straight to the developer.
-            </Text>
-            <TextInput
-              style={styles.feedbackInput}
-              placeholder="What's working, what's not, ideas…"
-              placeholderTextColor={Colors.textMuted}
-              value={feedbackText}
-              onChangeText={setFeedbackText}
-              multiline
-              autoFocus
-              editable={!sendingFeedback && !feedbackSent}
-            />
-            {feedbackError && (
-              <Text style={styles.feedbackErr}>
-                Couldn't send. Check your connection and try again.
-              </Text>
-            )}
-            {feedbackSent ? (
-              <Text style={styles.feedbackOk}>✓ Thanks! Feedback sent.</Text>
-            ) : (
-              <View style={styles.modalActions}>
-                <TouchableOpacity
-                  style={[styles.modalBtn, styles.modalCancel]}
-                  onPress={() => setShowFeedback(false)}
-                  disabled={sendingFeedback}
-                  activeOpacity={0.8}
-                >
-                  <Text style={styles.modalCancelText}>Cancel</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[
-                    styles.modalBtn,
-                    styles.modalSend,
-                    (!feedbackText.trim() || sendingFeedback) &&
-                      styles.modalSendDisabled,
-                  ]}
-                  onPress={submitFeedback}
-                  disabled={!feedbackText.trim() || sendingFeedback}
-                  activeOpacity={0.8}
-                >
-                  {sendingFeedback ? (
-                    <ActivityIndicator color="#fff" size="small" />
-                  ) : (
-                    <Text style={styles.modalSendText}>Send</Text>
-                  )}
-                </TouchableOpacity>
-              </View>
-            )}
-          </View>
-        </View>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -728,6 +686,17 @@ const styles = StyleSheet.create({
     borderColor: Colors.border,
   },
   feedbackBtnText: { fontSize: 14, color: Colors.primary, fontWeight: '700' },
+  speedBtn: {
+    minWidth: 44,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  speedBtnText: { fontSize: 14, color: Colors.primaryDark, fontWeight: '800' },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',
