@@ -7,6 +7,7 @@ import {
 import * as FileSystem from 'expo-file-system/legacy';
 import * as Speech from 'expo-speech';
 import { apiUrl } from '@/lib/api';
+import { getSetting } from '@/lib/db/queries';
 
 // Ember's voice. Primary path: ElevenLabs (synthesized server-side, played
 // from a cached file). Fallback: the device's built-in TTS, so Driving Mode is
@@ -19,6 +20,12 @@ export function useTts() {
   const cancelledRef = useRef(false);
 
   const cleanupPlayer = useCallback(() => {
+    // Pause first — remove() alone doesn't reliably halt audio already playing.
+    try {
+      playerRef.current?.pause();
+    } catch {
+      // already paused/removed
+    }
     try {
       playerRef.current?.remove();
     } catch {
@@ -47,13 +54,17 @@ export function useTts() {
 
   // Returns once speech has finished (or was cancelled / failed).
   // `rate` is the playback speed multiplier (1 = normal, 1.5, 2, …).
+  // `voiceOverride` forces a specific ElevenLabs voice (used for previews);
+  // otherwise the user's saved voice (setting 'voice_id') is used.
   const speak = useCallback(
-    async (rawText: string, rate: number = 1) => {
+    async (rawText: string, rate: number = 1, voiceOverride?: string) => {
       const text = rawText.trim();
       if (!text) return;
 
       cancelledRef.current = false;
       setIsSpeaking(true);
+
+      const voiceId = voiceOverride ?? (await getSetting('voice_id')) ?? undefined;
 
       // Configure the audio session up front so BOTH the ElevenLabs player and
       // the device-TTS fallback are audible even when the ringer switch is off.
@@ -67,7 +78,7 @@ export function useTts() {
         const res = await fetch(apiUrl('/api/speak'), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ text }),
+          body: JSON.stringify({ text, voiceId }),
         });
         if (!res.ok) throw new Error(`speak http ${res.status}`);
 

@@ -6,9 +6,19 @@
 // In local dev, set ELEVENLABS_API_KEY in a .env file (no EXPO_PUBLIC_ prefix).
 // In EAS builds, set it in eas.json under env or as an EAS secret.
 
-// Default voice: "Rachel" — a calm, warm narration voice that suits Ember.
-// Browse / preview voices at https://elevenlabs.io/app/voice-library
-const VOICE_ID = process.env.ELEVENLABS_VOICE_ID ?? '21m00Tcm4TlvDq8ikWAM';
+// Default voice when the client doesn't specify one (and no env override).
+const DEFAULT_VOICE_ID =
+  process.env.ELEVENLABS_VOICE_ID ?? 'EXAVITQu4vr4xnSDxMaL';
+// Allow-list of voice ids the client may request (free-tier usable). Prevents
+// arbitrary/paid voice ids from being passed through.
+const ALLOWED_VOICE_IDS = new Set([
+  'EXAVITQu4vr4xnSDxMaL', // Sarah
+  'XrExE9yKIg1WjnnlVkGX', // Matilda
+  'Xb7hH8MSUJpSbSDYk0k2', // Alice
+  'JBFqnCBsd6RMkjVDRZzb', // George
+  'nPczCjzI2devNBz1zQrb', // Brian
+  'bIHbv24MWmeRgasZH58o', // Will
+]);
 // Flash v2.5 keeps latency low enough for hands-free driving use.
 const TTS_MODEL = process.env.ELEVENLABS_MODEL ?? 'eleven_flash_v2_5';
 
@@ -25,7 +35,7 @@ export async function POST(request: Request): Promise<Response> {
     return json({ error: 'ELEVENLABS_API_KEY is not configured.' }, 500);
   }
 
-  let body: { text?: string };
+  let body: { text?: string; voiceId?: string };
   try {
     body = await request.json();
   } catch {
@@ -37,10 +47,13 @@ export async function POST(request: Request): Promise<Response> {
     return json({ error: 'text is required.' }, 400);
   }
 
+  const requested = (body.voiceId ?? '').toString();
+  const voiceId = ALLOWED_VOICE_IDS.has(requested) ? requested : DEFAULT_VOICE_ID;
+
   try {
     const elRes = await fetch(
       `https://api.elevenlabs.io/v1/text-to-speech/${encodeURIComponent(
-        VOICE_ID,
+        voiceId,
       )}?output_format=mp3_44100_128`,
       {
         method: 'POST',

@@ -12,20 +12,34 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
 import { getSetting, setSetting } from '@/lib/db/queries';
 import { getDb } from '@/lib/db/schema';
+import { useTts } from '@/hooks/useTts';
+import { VOICES, DEFAULT_VOICE_ID } from '@/lib/voices';
 import { Colors } from '@/constants/colors';
 
 export default function SettingsScreen() {
   const [userName, setUserName] = useState('');
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState('');
+  const [voiceId, setVoiceId] = useState<string>(DEFAULT_VOICE_ID);
+  const tts = useTts();
 
   useFocusEffect(
     useCallback(() => {
       getSetting('user_name').then((n) => {
         if (n) setUserName(n);
       });
+      getSetting('voice_id').then((v) => setVoiceId(v ?? DEFAULT_VOICE_ID));
     }, []),
   );
+
+  const selectVoice = async (id: string) => {
+    setVoiceId(id);
+    await setSetting('voice_id', id);
+  };
+  const previewVoice = (id: string) => {
+    tts.stop();
+    tts.speak("Hi, I'm Ember. This is how I sound.", 1, id);
+  };
 
   const saveName = async () => {
     const trimmed = draftName.trim();
@@ -126,6 +140,43 @@ export default function SettingsScreen() {
           </View>
         </View>
 
+        {/* Voice */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Ember's voice</Text>
+          {VOICES.map((v) => {
+            const selected = v.id === voiceId;
+            return (
+              <View
+                key={v.id}
+                style={[styles.voiceRow, selected && styles.voiceRowSelected]}
+              >
+                <TouchableOpacity
+                  style={styles.voiceMain}
+                  onPress={() => selectVoice(v.id)}
+                  activeOpacity={0.7}
+                >
+                  <Text style={styles.voiceCheck}>{selected ? '✓' : ''}</Text>
+                  <View>
+                    <Text style={styles.voiceName}>{v.name}</Text>
+                    <Text style={styles.voiceDesc}>{v.description}</Text>
+                  </View>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.voicePreview}
+                  onPress={() => previewVoice(v.id)}
+                  hitSlop={8}
+                  activeOpacity={0.8}
+                >
+                  <Text style={styles.voicePreviewText}>▶</Text>
+                </TouchableOpacity>
+              </View>
+            );
+          })}
+          <Text style={styles.voiceHint}>
+            Tap a name to select it, ▶ to preview. Uses the ElevenLabs voice.
+          </Text>
+        </View>
+
         {/* About */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>About</Text>
@@ -219,6 +270,42 @@ const styles = StyleSheet.create({
   },
   saveBtn: { fontSize: 15, color: Colors.primary, fontWeight: '700' },
   cancelBtn: { fontSize: 15, color: Colors.textMuted },
+  voiceRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: Colors.surface,
+    borderRadius: 14,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+  },
+  voiceRowSelected: { borderColor: Colors.primary, borderWidth: 2 },
+  voiceMain: { flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 },
+  voiceCheck: {
+    width: 18,
+    fontSize: 16,
+    fontWeight: '800',
+    color: Colors.primary,
+  },
+  voiceName: { fontSize: 16, fontWeight: '700', color: Colors.text },
+  voiceDesc: { fontSize: 13, color: Colors.textSecondary },
+  voicePreview: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: Colors.surfaceAlt,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  voicePreviewText: { fontSize: 16, color: Colors.primary, marginLeft: 2 },
+  voiceHint: {
+    fontSize: 12,
+    color: Colors.textMuted,
+    paddingHorizontal: 4,
+    lineHeight: 17,
+  },
   infoCard: {
     backgroundColor: Colors.surface,
     borderRadius: 14,

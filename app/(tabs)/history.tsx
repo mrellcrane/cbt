@@ -14,13 +14,15 @@ import { useMoodHistory } from '@/hooks/useMoodHistory';
 import {
   getThoughtRecords,
   getGratitudeEntries,
+  getAllDistortions,
   type ThoughtRecord,
   type GratitudeEntry,
 } from '@/lib/db/queries';
+import { computeDistortionStats, type DistortionStat } from '@/lib/distortions';
 import { Colors, moodColor } from '@/constants/colors';
 import dayjs from 'dayjs';
 
-type Tab = 'mood' | 'thoughts' | 'gratitude';
+type Tab = 'mood' | 'thoughts' | 'gratitude' | 'patterns';
 
 export default function HistoryScreen() {
   const [activeTab, setActiveTab] = useState<Tab>('mood');
@@ -31,12 +33,17 @@ export default function HistoryScreen() {
   const [selectedThought, setSelectedThought] = useState<ThoughtRecord | null>(
     null,
   );
+  const [distortions, setDistortions] = useState<{
+    stats: DistortionStat[];
+    total: number;
+  }>({ stats: [], total: 0 });
 
   useFocusEffect(
     useCallback(() => {
       reload();
       getThoughtRecords(30).then(setThoughts);
       getGratitudeEntries(30).then(setGratitude);
+      getAllDistortions().then((d) => setDistortions(computeDistortionStats(d)));
     }, [reload]),
   );
 
@@ -54,8 +61,13 @@ export default function HistoryScreen() {
       </View>
 
       {/* Tab switcher */}
-      <View style={styles.tabRow}>
-        {(['mood', 'thoughts', 'gratitude'] as Tab[]).map((t) => (
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.tabRow}
+        contentContainerStyle={styles.tabRowContent}
+      >
+        {(['mood', 'thoughts', 'gratitude', 'patterns'] as Tab[]).map((t) => (
           <TouchableOpacity
             key={t}
             style={[styles.tab, activeTab === t && styles.tabActive]}
@@ -65,11 +77,17 @@ export default function HistoryScreen() {
             <Text
               style={[styles.tabText, activeTab === t && styles.tabTextActive]}
             >
-              {t === 'mood' ? 'Mood' : t === 'thoughts' ? 'Thoughts' : 'Gratitude'}
+              {t === 'mood'
+                ? 'Mood'
+                : t === 'thoughts'
+                  ? 'Thoughts'
+                  : t === 'gratitude'
+                    ? 'Gratitude'
+                    : 'Patterns'}
             </Text>
           </TouchableOpacity>
         ))}
-      </View>
+      </ScrollView>
 
       <ScrollView
         style={styles.flex}
@@ -227,6 +245,43 @@ export default function HistoryScreen() {
             )}
           </>
         )}
+
+        {activeTab === 'patterns' && (
+          <>
+            <Text style={styles.sectionTitle}>Cognitive distortion patterns</Text>
+            {distortions.total === 0 ? (
+              <Text style={styles.empty}>
+                Complete a few thought records in Chat to see which thinking
+                patterns show up most often.
+              </Text>
+            ) : (
+              <>
+                <Text style={styles.patternsIntro}>
+                  Across {distortions.total} thought record
+                  {distortions.total !== 1 ? 's' : ''}, here's how often each
+                  distortion came up:
+                </Text>
+                {distortions.stats.map((s) => {
+                  const max = distortions.stats[0]?.count || 1;
+                  const pct = Math.max(6, Math.round((s.count / max) * 100));
+                  return (
+                    <View key={s.name} style={styles.distRow}>
+                      <View style={styles.distHeader}>
+                        <Text style={styles.distName}>{s.name}</Text>
+                        <Text style={styles.distCount}>{s.count}</Text>
+                      </View>
+                      <View style={styles.distBarTrack}>
+                        <View
+                          style={[styles.distBarFill, { width: `${pct}%` }]}
+                        />
+                      </View>
+                    </View>
+                  );
+                })}
+              </>
+            )}
+          </>
+        )}
       </ScrollView>
 
       {/* Thought record detail modal */}
@@ -293,13 +348,17 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 24, fontWeight: '800', color: Colors.text },
   tabRow: {
-    flexDirection: 'row',
+    flexGrow: 0,
     backgroundColor: Colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: Colors.border,
+  },
+  tabRowContent: {
+    flexDirection: 'row',
     paddingHorizontal: 16,
     paddingBottom: 12,
     gap: 8,
-    borderBottomWidth: 1,
-    borderBottomColor: Colors.border,
+    alignItems: 'center',
   },
   tab: {
     paddingHorizontal: 16,
@@ -415,6 +474,38 @@ const styles = StyleSheet.create({
   },
   gratDate: { fontSize: 12, color: Colors.textMuted, marginBottom: 4 },
   gratItem: { fontSize: 15, color: Colors.text, lineHeight: 22 },
+  patternsIntro: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    lineHeight: 20,
+    marginBottom: 4,
+  },
+  distRow: {
+    backgroundColor: Colors.surface,
+    borderRadius: 12,
+    padding: 14,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    gap: 8,
+  },
+  distHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  distName: { fontSize: 15, fontWeight: '600', color: Colors.text, flex: 1 },
+  distCount: { fontSize: 15, fontWeight: '800', color: Colors.primary },
+  distBarTrack: {
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.surfaceAlt,
+    overflow: 'hidden',
+  },
+  distBarFill: {
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.primary,
+  },
   // Modal
   modalSafe: { flex: 1, backgroundColor: Colors.background },
   modalHeader: {

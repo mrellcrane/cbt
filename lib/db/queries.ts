@@ -121,6 +121,19 @@ export async function getThoughtRecords(limit = 20): Promise<ThoughtRecord[]> {
   );
 }
 
+// All recorded cognitive-distortion classifications across completed thought
+// records, used to compute how often each distortion shows up.
+export async function getAllDistortions(): Promise<string[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ distortion: string | null }>(
+    `SELECT distortion FROM thought_records
+     WHERE status = 'complete'
+       AND distortion IS NOT NULL
+       AND TRIM(distortion) != ''`,
+  );
+  return rows.map((r) => r.distortion ?? '').filter((s) => s.trim().length > 0);
+}
+
 // ─── Gratitude Entries ────────────────────────────────────────────────────────
 
 export interface GratitudeEntry {
