@@ -56,5 +56,22 @@ async function runMigrations(db: SQLite.SQLiteDatabase): Promise<void> {
 
     CREATE INDEX IF NOT EXISTS idx_mood_created
       ON mood_entries(created_at);
+
+    -- Per-message analysis of the user's own turns across ALL conversations
+    -- (free chat + driving mode), so thinking patterns aren't limited to the
+    -- handful of formal thought records. Arrays stored as JSON text. One row
+    -- per analyzed user message; empty arrays mark "analyzed, nothing found".
+    CREATE TABLE IF NOT EXISTS message_insights (
+      id          INTEGER PRIMARY KEY AUTOINCREMENT,
+      message_id  INTEGER NOT NULL UNIQUE,
+      session_id  TEXT NOT NULL,
+      distortions TEXT NOT NULL DEFAULT '[]',
+      emotions    TEXT NOT NULL DEFAULT '[]',
+      topics      TEXT NOT NULL DEFAULT '[]',
+      created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_insights_message
+      ON message_insights(message_id);
   `);
 }

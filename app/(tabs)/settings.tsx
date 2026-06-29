@@ -7,12 +7,17 @@ import {
   Alert,
   ScrollView,
   TextInput,
+  Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, router } from 'expo-router';
 import { getSetting, setSetting } from '@/lib/db/queries';
 import { getDb } from '@/lib/db/schema';
 import { useTts } from '@/hooks/useTts';
+import {
+  isDigestEnabled,
+  setDigestEnabled as persistDigestEnabled,
+} from '@/lib/digest';
 import { VOICES, DEFAULT_VOICE_ID } from '@/lib/voices';
 import { Colors } from '@/constants/colors';
 
@@ -21,6 +26,7 @@ export default function SettingsScreen() {
   const [editingName, setEditingName] = useState(false);
   const [draftName, setDraftName] = useState('');
   const [voiceId, setVoiceId] = useState<string>(DEFAULT_VOICE_ID);
+  const [digestEnabled, setDigestEnabled] = useState(true);
   const tts = useTts();
 
   useFocusEffect(
@@ -29,8 +35,14 @@ export default function SettingsScreen() {
         if (n) setUserName(n);
       });
       getSetting('voice_id').then((v) => setVoiceId(v ?? DEFAULT_VOICE_ID));
+      isDigestEnabled().then(setDigestEnabled);
     }, []),
   );
+
+  const toggleDigest = async (next: boolean) => {
+    setDigestEnabled(next);
+    await persistDigestEnabled(next);
+  };
 
   const selectVoice = async (id: string) => {
     setVoiceId(id);
@@ -177,6 +189,25 @@ export default function SettingsScreen() {
           </Text>
         </View>
 
+        {/* Notifications */}
+        <View style={styles.section}>
+          <Text style={styles.sectionLabel}>Notifications</Text>
+          <View style={styles.row}>
+            <View style={styles.rowTextWrap}>
+              <Text style={styles.rowLabel}>Weekly insight digest</Text>
+              <Text style={styles.rowSub}>
+                A Sunday-evening summary of your thinking patterns.
+              </Text>
+            </View>
+            <Switch
+              value={digestEnabled}
+              onValueChange={toggleDigest}
+              trackColor={{ false: Colors.border, true: Colors.primaryLight }}
+              thumbColor={digestEnabled ? Colors.primary : '#f4f3f4'}
+            />
+          </View>
+        </View>
+
         {/* About */}
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>About</Text>
@@ -253,6 +284,8 @@ const styles = StyleSheet.create({
   },
   rowLabel: { fontSize: 15, color: Colors.text, fontWeight: '500' },
   rowValue: { fontSize: 15, color: Colors.primary, fontWeight: '600' },
+  rowTextWrap: { flex: 1, paddingRight: 12, gap: 3 },
+  rowSub: { fontSize: 13, color: Colors.textSecondary, lineHeight: 18 },
   nameEditRow: {
     flexDirection: 'row',
     alignItems: 'center',

@@ -22,6 +22,7 @@ import { useFocusEffect, useLocalSearchParams } from 'expo-router';
 import Constants from 'expo-constants';
 import { apiUrl } from '@/lib/api';
 import { useTts } from '@/hooks/useTts';
+import { useDictation } from '@/hooks/useDictation';
 import { ChatBubble } from '@/components/ChatBubble';
 import { ChatInput } from '@/components/ChatInput';
 import { MoodSlider } from '@/components/MoodSlider';
@@ -41,6 +42,7 @@ import {
   insertGratitudeEntry,
 } from '@/lib/db/queries';
 import type { ChatMessage, Mode } from '@/lib/ai/types';
+import { analyzePendingMessages } from '@/lib/insights';
 import { Colors } from '@/constants/colors';
 import { LESSONS } from '@/lib/lessons';
 import { router } from 'expo-router';
@@ -139,6 +141,16 @@ export default function ChatScreen() {
 
   const listRef = useRef<FlatList>(null);
   const abortRef = useRef<boolean>(false);
+  const mountedRef = useRef(true);
+  // Latest sendMessage, so the dictation callback always calls the current one
+  // without re-creating the speech recognizer on every render.
+  const sendMessageRef = useRef<((t: string) => void) | null>(null);
+
+  // Mirrors of streaming/crisis state for use inside async callbacks.
+  const isStreamingRef = useRef(false);
+  isStreamingRef.current = isStreaming;
+  const showCrisisRef = useRef(false);
+  showCrisisRef.current = showCrisisCard;
 
   // Tap-to-play audio for Ember's messages. One TTS engine; playingId tracks
   // which message is currently being read aloud.
@@ -194,6 +206,99 @@ export default function ChatScreen() {
     [tts],
   );
 
+  // ── Hands-free voice loop ───────────────────────────────────────────────────
+  // When on, Ember's reply is spoken aloud and the mic reopens the instant it
+  // finishes — so a normal chat can be carried entirely by voice, like a
+  // lightweight Driving Mode. Hands-free implies auto-play (you need to hear the
+  // reply to know your turn has started).
+  const [handsFree, setHandsFree] = useState(false);
+  const handsFreeRef = useRef(false);
+  handsFreeRef.current = handsFree;
+  const [listening, setListening] = useState(false);
+
+  const dictation = useDictation({
+    onFinalResult: (t) => {
+      setListening(false);
+      sendMessageRef.current?.(t);
+    },
+  });
+  const dictationRef = useRef(dictation);
+  dictationRef.current = dictation;
+
+  // Reflect the recognizer going idle (e.g. a silent timeout) back into our flag.
+  useEffect(() => {
+    if (dictation.state === 'idle') setListening(false);
+  }, [dictation.state]);
+
+  const beginListening = useCallback(async () => {
+    if (!mountedRef.current || isStreamingRef.current) return;
+    setListening(true);
+    const ok = await dictationRef.current.start();
+    if (!ok) {
+      setListening(false);
+      Alert.alert(
+        'Microphone needed',
+        'Enable microphone and speech recognition in Settings to reply by voice.',
+      );
+    }
+  }, []);
+
+  // Finalize the current utterance now (delivers the transcript via onFinalResult).
+  const stopListening = useCallback(() => {
+    dictationRef.current.stop();
+  }, []);
+
+  const cancelListening = useCallback(() => {
+    dictationRef.current.abort();
+    setListening(false);
+  }, []);
+
+  // Speak a reply aloud and, in hands-free mode, reopen the mic when it ends.
+  const speakAndContinue = useCallback(
+    (id: string, text: string) => {
+      setPlayingId(id);
+      tts.speak(text, speedRef.current).finally(() => {
+        setPlayingId((curr) => (curr === id ? null : curr));
+        if (
+          handsFreeRef.current &&
+          mountedRef.current &&
+          !showCrisisRef.current
+        ) {
+          beginListening();
+        }
+      });
+    },
+    [tts, beginListening],
+  );
+
+  const toggleHandsFree = useCallback(
+    (next: boolean) => {
+      setHandsFree(next);
+      setSetting('handsfree', next ? 'on' : 'off');
+      if (next) {
+        // Hands-free needs spoken replies — turn auto-play on too.
+        if (!autoPlayRef.current) {
+          setAutoPlay(true);
+          setSetting('autoplay', 'on');
+        }
+      } else {
+        cancelListening();
+      }
+    },
+    [cancelListening],
+  );
+
+  // Tear down voice on unmount.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      dictationRef.current.abort();
+      tts.stop();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // Feedback — a standard native dialog (Alert.prompt); submissions are stored
   // server-side as a GitHub issue.
   const submitFeedback = useCallback(async (raw: string) => {
@@ -241,6 +346,9 @@ export default function ChatScreen() {
         const ap = (await getSetting('autoplay')) === 'on';
         setAutoPlay(ap);
 
+        const hf = (await getSetting('handsfree')) === 'on';
+        setHandsFree(hf);
+
         const sp = parseFloat((await getSetting('playback_speed')) ?? '1');
         setSpeed(SPEEDS.includes(sp) ? sp : 1);
 
@@ -254,6 +362,12 @@ export default function ChatScreen() {
         const history = await getMessages(sid, 40);
         setMessages(history);
       })();
+      // When the user leaves the chat, quietly tag this session's messages so
+      // the Patterns tab (and anything downstream) has fresh insights without
+      // waiting for the user to open History.
+      return () => {
+        analyzePendingMessages();
+      };
     }, []),
   );
 
@@ -357,9 +471,10 @@ export default function ChatScreen() {
         sessionId: sid,
       });
 
-      // Auto-play Ember's reply aloud when the setting is on.
+      // Auto-play Ember's reply aloud when the setting is on. In hands-free
+      // mode this also reopens the mic once the reply finishes.
       if (autoPlayRef.current && display) {
-        playMessage(assistantMsg.id, display);
+        speakAndContinue(assistantMsg.id, display);
       }
 
       // Persist thought record if complete
@@ -384,8 +499,10 @@ export default function ChatScreen() {
       setIsStreaming(false);
       setStreamingText('');
     },
-    [isStreaming, mode, exerciseContext, sessionId, userName, messages, activeThoughtRecordId],
+    [isStreaming, mode, exerciseContext, sessionId, userName, messages, activeThoughtRecordId, speakAndContinue],
   );
+  // Keep the dictation callback pointed at the latest sendMessage.
+  sendMessageRef.current = sendMessage;
 
   // ── Quick action handlers ──────────────────────────────────────────────────
 
@@ -459,6 +576,9 @@ export default function ChatScreen() {
 
   const startNewChat = () => {
     abortRef.current = true;
+    cancelListening();
+    tts.stop();
+    setPlayingId(null);
     setMessages([]);
     setStreamingText('');
     setIsStreaming(false);
@@ -527,6 +647,17 @@ export default function ChatScreen() {
             accessibilityLabel={`Playback speed ${speed}x, tap to change`}
           >
             <Text style={styles.speedBtnText}>{speed}×</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.hfBtn, handsFree && styles.hfBtnOn]}
+            onPress={() => toggleHandsFree(!handsFree)}
+            activeOpacity={0.8}
+            hitSlop={8}
+            accessibilityLabel="Hands-free voice reply"
+          >
+            <Text style={[styles.hfBtnText, handsFree && styles.hfBtnTextOn]}>
+              🎙️
+            </Text>
           </TouchableOpacity>
         </View>
         <TouchableOpacity
@@ -634,16 +765,34 @@ export default function ChatScreen() {
         )}
 
         {!showMoodSlider && (
-          <ChatInput
-            onSend={(text) => {
-              if (mode === 'free_chat' || mode === 'check_in') {
-                sendMessage(text);
-              } else {
-                sendMessage(text);
-              }
-            }}
-            disabled={isStreaming || showMoodSlider}
-          />
+          <>
+            {listening && (
+              <View style={styles.listenBar}>
+                <View style={styles.listenDot} />
+                <Text style={styles.listenText} numberOfLines={2}>
+                  {dictation.partial || 'Listening… speak your reply'}
+                </Text>
+                <TouchableOpacity
+                  onPress={cancelListening}
+                  hitSlop={8}
+                  style={styles.listenCancel}
+                >
+                  <Text style={styles.listenCancelText}>✕</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={stopListening}
+                  hitSlop={8}
+                  style={styles.listenDone}
+                >
+                  <Text style={styles.listenDoneText}>Done</Text>
+                </TouchableOpacity>
+              </View>
+            )}
+            <ChatInput
+              onSend={(text) => sendMessage(text)}
+              disabled={isStreaming || showMoodSlider || listening}
+            />
+          </>
         )}
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -697,6 +846,58 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   speedBtnText: { fontSize: 14, color: Colors.primaryDark, fontWeight: '800' },
+  hfBtn: {
+    minWidth: 44,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 14,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+  },
+  hfBtnOn: {
+    backgroundColor: Colors.primary,
+    borderColor: Colors.primary,
+  },
+  hfBtnText: { fontSize: 15, opacity: 0.55 },
+  hfBtnTextOn: { opacity: 1 },
+  listenBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    marginHorizontal: 12,
+    marginBottom: 6,
+    borderRadius: 16,
+    backgroundColor: Colors.primaryLight + '22',
+    borderWidth: 1,
+    borderColor: Colors.primaryLight,
+  },
+  listenDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    backgroundColor: Colors.danger,
+  },
+  listenText: { flex: 1, fontSize: 14, color: Colors.text },
+  listenCancel: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: Colors.surfaceAlt,
+  },
+  listenCancelText: { fontSize: 14, color: Colors.textSecondary, fontWeight: '700' },
+  listenDone: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 14,
+    backgroundColor: Colors.primary,
+  },
+  listenDoneText: { fontSize: 14, color: '#fff', fontWeight: '700' },
   modalBackdrop: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.4)',

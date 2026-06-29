@@ -9,6 +9,7 @@ import { Colors } from '@/constants/colors';
 import { VersionBadge } from '@/components/VersionBadge';
 import { UpdateBanner } from '@/components/UpdateBanner';
 import { PushRegistration } from '@/components/PushRegistration';
+import { DigestScheduler } from '@/components/DigestScheduler';
 
 SplashScreen.preventAutoHideAsync();
 
@@ -42,6 +43,7 @@ export default function RootLayout() {
       <VersionBadge />
       <UpdateBanner />
       <PushRegistration />
+      <DigestScheduler />
     </>
   );
 }

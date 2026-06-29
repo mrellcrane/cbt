@@ -28,6 +28,7 @@ import {
   saveMessage,
 } from '@/lib/db/queries';
 import type { ApiMessage } from '@/lib/ai/types';
+import { analyzePendingMessages } from '@/lib/insights';
 import { Colors } from '@/constants/colors';
 
 type Status = 'idle' | 'listening' | 'thinking' | 'speaking';
@@ -172,6 +173,10 @@ export default function DrivingScreen() {
       mountedRef.current = false;
       dictationRef.current.abort();
       tts.stop();
+      // Leaving Driving Mode: tag this session's spoken turns in the background
+      // so conversation patterns stay current. (Covers both the ✕ button and a
+      // swipe-back, since both unmount the screen.)
+      analyzePendingMessages();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

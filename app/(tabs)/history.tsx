@@ -19,6 +19,11 @@ import {
   type GratitudeEntry,
 } from '@/lib/db/queries';
 import { computeDistortionStats, type DistortionStat } from '@/lib/distortions';
+import {
+  analyzePendingMessages,
+  getConversationPatterns,
+  type TallyItem,
+} from '@/lib/insights';
 import { Colors, moodColor } from '@/constants/colors';
 import dayjs from 'dayjs';
 
@@ -37,14 +42,47 @@ export default function HistoryScreen() {
     stats: DistortionStat[];
     total: number;
   }>({ stats: [], total: 0 });
+  const [emotions, setEmotions] = useState<TallyItem[]>([]);
+  const [topics, setTopics] = useState<TallyItem[]>([]);
+  const [analyzedCount, setAnalyzedCount] = useState(0);
+  const [analyzing, setAnalyzing] = useState(false);
+
+  // Combine distortions from formal thought records with the ones detected
+  // passively across all conversations, then count through the shared helper.
+  const loadPatterns = useCallback(async () => {
+    const [trStrings, convo] = await Promise.all([
+      getAllDistortions(),
+      getConversationPatterns(),
+    ]);
+    setDistortions(
+      computeDistortionStats([...trStrings, ...convo.distortionStrings]),
+    );
+    setEmotions(convo.emotions);
+    setTopics(convo.topics);
+    setAnalyzedCount(convo.analyzedCount);
+  }, []);
 
   useFocusEffect(
     useCallback(() => {
       reload();
       getThoughtRecords(30).then(setThoughts);
       getGratitudeEntries(30).then(setGratitude);
-      getAllDistortions().then((d) => setDistortions(computeDistortionStats(d)));
-    }, [reload]),
+      loadPatterns();
+      // Classify any conversation turns that haven't been analyzed yet, then
+      // refresh the patterns once new insights land.
+      let cancelled = false;
+      setAnalyzing(true);
+      analyzePendingMessages()
+        .then((n) => {
+          if (!cancelled && n > 0) loadPatterns();
+        })
+        .finally(() => {
+          if (!cancelled) setAnalyzing(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }, [reload, loadPatterns]),
   );
 
   const recentEntries = entries.slice(-chartDays);
@@ -248,36 +286,75 @@ export default function HistoryScreen() {
 
         {activeTab === 'patterns' && (
           <>
-            <Text style={styles.sectionTitle}>Cognitive distortion patterns</Text>
-            {distortions.total === 0 ? (
+            {distortions.stats.length === 0 &&
+            emotions.length === 0 &&
+            topics.length === 0 ? (
               <Text style={styles.empty}>
-                Complete a few thought records in Chat to see which thinking
-                patterns show up most often.
+                {analyzing
+                  ? 'Looking for patterns in your conversations…'
+                  : 'Keep chatting with Ember and completing thought records. As you do, the thinking patterns, emotions, and themes that show up most often will appear here.'}
               </Text>
             ) : (
               <>
                 <Text style={styles.patternsIntro}>
-                  Across {distortions.total} thought record
-                  {distortions.total !== 1 ? 's' : ''}, here's how often each
-                  distortion came up:
+                  Drawn from your thought records and{' '}
+                  {analyzedCount} message{analyzedCount !== 1 ? 's' : ''} across
+                  your conversations.
+                  {analyzing ? ' Updating…' : ''}
                 </Text>
-                {distortions.stats.map((s) => {
-                  const max = distortions.stats[0]?.count || 1;
-                  const pct = Math.max(6, Math.round((s.count / max) * 100));
-                  return (
-                    <View key={s.name} style={styles.distRow}>
-                      <View style={styles.distHeader}>
-                        <Text style={styles.distName}>{s.name}</Text>
-                        <Text style={styles.distCount}>{s.count}</Text>
+
+                <Text style={styles.sectionTitle}>Thinking patterns</Text>
+                {distortions.stats.length === 0 ? (
+                  <Text style={styles.empty}>
+                    No clear distortions detected yet.
+                  </Text>
+                ) : (
+                  distortions.stats.map((s) => {
+                    const max = distortions.stats[0]?.count || 1;
+                    const pct = Math.max(6, Math.round((s.count / max) * 100));
+                    return (
+                      <View key={s.name} style={styles.distRow}>
+                        <View style={styles.distHeader}>
+                          <Text style={styles.distName}>{s.name}</Text>
+                          <Text style={styles.distCount}>{s.count}</Text>
+                        </View>
+                        <View style={styles.distBarTrack}>
+                          <View
+                            style={[styles.distBarFill, { width: `${pct}%` }]}
+                          />
+                        </View>
                       </View>
-                      <View style={styles.distBarTrack}>
-                        <View
-                          style={[styles.distBarFill, { width: `${pct}%` }]}
-                        />
-                      </View>
+                    );
+                  })
+                )}
+
+                {emotions.length > 0 && (
+                  <>
+                    <Text style={styles.sectionTitle}>Emotions you name</Text>
+                    <View style={styles.chipWrap}>
+                      {emotions.slice(0, 10).map((e) => (
+                        <View key={e.name} style={styles.chip}>
+                          <Text style={styles.chipText}>{e.name}</Text>
+                          <Text style={styles.chipCount}>{e.count}</Text>
+                        </View>
+                      ))}
                     </View>
-                  );
-                })}
+                  </>
+                )}
+
+                {topics.length > 0 && (
+                  <>
+                    <Text style={styles.sectionTitle}>What's on your mind</Text>
+                    <View style={styles.chipWrap}>
+                      {topics.slice(0, 12).map((t) => (
+                        <View key={t.name} style={[styles.chip, styles.chipTopic]}>
+                          <Text style={styles.chipText}>{t.name}</Text>
+                          <Text style={styles.chipCount}>{t.count}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  </>
+                )}
               </>
             )}
           </>
@@ -505,6 +582,37 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     backgroundColor: Colors.primary,
+  },
+  chipWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  chip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: Colors.primaryLight + '22',
+    borderColor: Colors.primaryLight,
+    borderWidth: 1,
+    borderRadius: 16,
+    paddingVertical: 7,
+    paddingHorizontal: 12,
+  },
+  chipTopic: {
+    backgroundColor: Colors.surfaceAlt,
+    borderColor: Colors.border,
+  },
+  chipText: {
+    fontSize: 14,
+    color: Colors.text,
+    fontWeight: '600',
+    textTransform: 'capitalize',
+  },
+  chipCount: {
+    fontSize: 13,
+    color: Colors.primaryDark,
+    fontWeight: '800',
   },
   // Modal
   modalSafe: { flex: 1, backgroundColor: Colors.background },

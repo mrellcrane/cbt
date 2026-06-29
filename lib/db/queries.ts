@@ -158,6 +158,95 @@ export async function getGratitudeEntries(limit = 20): Promise<GratitudeEntry[]>
   );
 }
 
+// ─── Message Insights (passive pattern detection) ─────────────────────────────
+
+export interface PendingMessage {
+  id: number;
+  content: string;
+  session_id: string;
+}
+
+// User messages that haven't been analyzed yet, newest first so recent thinking
+// shows up in the Patterns tab fastest; older turns backfill on later passes.
+export async function getUnanalyzedUserMessages(
+  limit = 40,
+): Promise<PendingMessage[]> {
+  const db = await getDb();
+  return db.getAllAsync<PendingMessage>(
+    `SELECT m.id, m.content, m.session_id
+     FROM messages m
+     LEFT JOIN message_insights i ON i.message_id = m.id
+     WHERE m.role = 'user' AND i.id IS NULL
+     ORDER BY m.id DESC
+     LIMIT ?`,
+    [limit],
+  );
+}
+
+export async function saveMessageInsight(row: {
+  messageId: number;
+  sessionId: string;
+  distortions: string[];
+  emotions: string[];
+  topics: string[];
+}): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR IGNORE INTO message_insights
+       (message_id, session_id, distortions, emotions, topics)
+     VALUES (?, ?, ?, ?, ?)`,
+    [
+      row.messageId,
+      row.sessionId,
+      JSON.stringify(row.distortions),
+      JSON.stringify(row.emotions),
+      JSON.stringify(row.topics),
+    ],
+  );
+}
+
+export interface StoredInsight {
+  distortions: string[];
+  emotions: string[];
+  topics: string[];
+}
+
+export async function getMessageInsights(
+  sinceDays?: number,
+): Promise<StoredInsight[]> {
+  const db = await getDb();
+  const rows = sinceDays
+    ? await db.getAllAsync<{
+        distortions: string;
+        emotions: string;
+        topics: string;
+      }>(
+        `SELECT i.distortions, i.emotions, i.topics
+         FROM message_insights i
+         JOIN messages m ON m.id = i.message_id
+         WHERE m.created_at >= datetime('now', ?)`,
+        [`-${sinceDays} days`],
+      )
+    : await db.getAllAsync<{
+        distortions: string;
+        emotions: string;
+        topics: string;
+      }>(`SELECT distortions, emotions, topics FROM message_insights`);
+  const parse = (s: string): string[] => {
+    try {
+      const a = JSON.parse(s);
+      return Array.isArray(a) ? a : [];
+    } catch {
+      return [];
+    }
+  };
+  return rows.map((r) => ({
+    distortions: parse(r.distortions),
+    emotions: parse(r.emotions),
+    topics: parse(r.topics),
+  }));
+}
+
 // ─── Messages ─────────────────────────────────────────────────────────────────
 
 export async function saveMessage(msg: {
