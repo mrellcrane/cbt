@@ -15,6 +15,11 @@ import {
   ScrollView,
   Switch,
   Alert,
+  AppState,
+  // Deprecated in favor of expo-clipboard, but expo-clipboard is a native
+  // module — it can't ship over OTA to existing binaries. The core module is
+  // compiled into every RN app, so it's safe for OTA. Swap after next build.
+  Clipboard,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { fetch } from 'expo/fetch';
@@ -31,6 +36,7 @@ import { buildSystemPrompt } from '@/lib/ai/systemPrompt';
 import { detectCrisis } from '@/lib/crisis';
 import {
   saveMessage,
+  deleteMessagesAfter,
   getMessages,
   getRecentSessionId,
   insertMoodEntry,
@@ -138,6 +144,31 @@ export default function ChatScreen() {
   const [checkedInToday, setCheckedInToday] = useState(false);
   // Track which lesson we've already auto-started so we don't repeat it.
   const handledLessonRef = useRef<string | null>(null);
+
+  // A reply that never arrived (usually because iOS suspended the app —
+  // and its network connection — when the user switched apps mid-stream).
+  // The user's message stays put; this drives the retry UI instead of
+  // persisting a fake "couldn't connect" reply.
+  const [failedTurn, setFailedTurn] = useState(false);
+  const retryParamsRef = useRef<{
+    history: ChatMessage[];
+    sid: string;
+    mode: Mode;
+    context: string;
+  } | null>(null);
+  const pendingAutoRetryRef = useRef(false);
+  const appActiveRef = useRef(AppState.currentState === 'active');
+  const backgroundedDuringStreamRef = useRef(false);
+  const runAssistantTurnRef = useRef<
+    | ((
+        history: ChatMessage[],
+        sid: string,
+        mode: Mode,
+        context: string,
+        isRetry?: boolean,
+      ) => Promise<void>)
+    | null
+  >(null);
 
   const listRef = useRef<FlatList>(null);
   const abortRef = useRef<boolean>(false);
@@ -288,6 +319,27 @@ export default function ChatScreen() {
     [cancelListening],
   );
 
+  // Watch foreground/background transitions. If the app is backgrounded while
+  // a reply is streaming, iOS will suspend JS and usually kill the connection;
+  // note that it happened so the failure path can quietly retry instead of
+  // surfacing an error, and fire any retry that had to wait for foreground.
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      appActiveRef.current = state === 'active';
+      if (state !== 'active' && isStreamingRef.current) {
+        backgroundedDuringStreamRef.current = true;
+      }
+      if (state === 'active' && pendingAutoRetryRef.current) {
+        pendingAutoRetryRef.current = false;
+        const p = retryParamsRef.current;
+        if (p) {
+          runAssistantTurnRef.current?.(p.history, p.sid, p.mode, p.context, true);
+        }
+      }
+    });
+    return () => sub.remove();
+  }, []);
+
   // Tear down voice on unmount.
   useEffect(() => {
     mountedRef.current = true;
@@ -379,32 +431,16 @@ export default function ChatScreen() {
     if (messages.length > 0 || isStreaming) scrollToBottom();
   }, [messages.length, streamingText]);
 
-  // Core send function — handles streaming, DB persistence, and structured data.
-  const sendMessage = useCallback(
-    async (userText: string, overrideMode?: Mode, overrideContext?: string) => {
-      if (isStreaming) return;
-
-      const currentMode = overrideMode ?? mode;
-      const currentContext = overrideContext ?? exerciseContext;
-      const sid = sessionId || makeSessionId();
-      if (!sessionId) setSessionId(sid);
-
-      // Crisis gate
-      if (detectCrisis(userText)) {
-        setShowCrisisCard(true);
-        // Still add the user message so conversation feels natural
-      }
-
-      const userMsg: ChatMessage = {
-        id: `u_${Date.now()}`,
-        role: 'user',
-        content: userText,
-        sessionId: sid,
-        createdAt: new Date().toISOString(),
-      };
-      setMessages((prev) => [...prev, userMsg]);
-      await saveMessage({ role: 'user', content: userText, sessionId: sid });
-
+  // Generate (or regenerate) Ember's reply to the given history. Shared by
+  // normal sends, "resend from here", and retries after a dropped connection.
+  const runAssistantTurn = useCallback(
+    async (
+      history: ChatMessage[],
+      sid: string,
+      currentMode: Mode,
+      currentContext: string,
+      isRetry = false,
+    ) => {
       const systemPromptText = buildSystemPrompt(
         userName,
         currentMode,
@@ -412,16 +448,19 @@ export default function ChatScreen() {
       );
 
       // Build messages array for the API (last 14 turns for context)
-      const contextWindow = [...messages, userMsg].slice(-14).map((m) => ({
+      const contextWindow = history.slice(-14).map((m) => ({
         role: m.role,
         content: m.content,
       }));
 
       setIsStreaming(true);
       setStreamingText('');
+      setFailedTurn(false);
       abortRef.current = false;
+      backgroundedDuringStreamRef.current = false;
 
       let fullText = '';
+      let streamFailed = false;
       try {
         const response = await fetch(apiUrl('/api/chat'), {
           method: 'POST',
@@ -449,27 +488,63 @@ export default function ChatScreen() {
           setStreamingText(fullText);
         }
       } catch (err) {
-        fullText = "Sorry, I couldn't connect right now. Check your API key and network, then try again.";
-        setStreamingText(fullText);
+        streamFailed = true;
       }
+
+      // User started a new chat mid-stream; everything is already reset.
+      if (abortRef.current) return;
+
+      if (streamFailed && !fullText.trim()) {
+        // Nothing arrived — most often iOS killed the connection because the
+        // app went to background. Keep the user's message (it's saved), skip
+        // persisting any reply, and retry instead of showing an error.
+        setIsStreaming(false);
+        setStreamingText('');
+        retryParamsRef.current = {
+          history,
+          sid,
+          mode: currentMode,
+          context: currentContext,
+        };
+        const causedByBackgrounding = backgroundedDuringStreamRef.current;
+        if (causedByBackgrounding && !isRetry) {
+          if (appActiveRef.current) {
+            // Back in the foreground already — retry silently right now.
+            runAssistantTurnRef.current?.(
+              history,
+              sid,
+              currentMode,
+              currentContext,
+              true,
+            );
+            return;
+          }
+          // Still backgrounded; retry the moment the app comes back.
+          pendingAutoRetryRef.current = true;
+        }
+        setFailedTurn(true);
+        return;
+      }
+      // If the stream broke partway, keep whatever already arrived — a partial
+      // reply beats an error message.
 
       // Process structured markers
       const { display, thoughtRecord, gratitudeItems } =
         extractAndStrip(fullText);
 
+      const savedId = await saveMessage({
+        role: 'assistant',
+        content: display,
+        sessionId: sid,
+      });
       const assistantMsg: ChatMessage = {
-        id: `a_${Date.now()}`,
+        id: String(savedId),
         role: 'assistant',
         content: display,
         sessionId: sid,
         createdAt: new Date().toISOString(),
       };
       setMessages((prev) => [...prev, assistantMsg]);
-      await saveMessage({
-        role: 'assistant',
-        content: display,
-        sessionId: sid,
-      });
 
       // Auto-play Ember's reply aloud when the setting is on. In hands-free
       // mode this also reopens the mic once the reply finishes.
@@ -499,10 +574,103 @@ export default function ChatScreen() {
       setIsStreaming(false);
       setStreamingText('');
     },
-    [isStreaming, mode, exerciseContext, sessionId, userName, messages, activeThoughtRecordId, speakAndContinue],
+    [userName, activeThoughtRecordId, speakAndContinue],
+  );
+  runAssistantTurnRef.current = runAssistantTurn;
+
+  // Core send function — persists the user turn, then streams the reply.
+  const sendMessage = useCallback(
+    async (userText: string, overrideMode?: Mode, overrideContext?: string) => {
+      if (isStreaming) return;
+
+      const currentMode = overrideMode ?? mode;
+      const currentContext = overrideContext ?? exerciseContext;
+      const sid = sessionId || makeSessionId();
+      if (!sessionId) setSessionId(sid);
+
+      // Crisis gate
+      if (detectCrisis(userText)) {
+        setShowCrisisCard(true);
+        // Still add the user message so conversation feels natural
+      }
+
+      const savedId = await saveMessage({
+        role: 'user',
+        content: userText,
+        sessionId: sid,
+      });
+      const userMsg: ChatMessage = {
+        id: String(savedId),
+        role: 'user',
+        content: userText,
+        sessionId: sid,
+        createdAt: new Date().toISOString(),
+      };
+      const history = [...messages, userMsg];
+      setMessages(history);
+
+      await runAssistantTurn(history, sid, currentMode, currentContext);
+    },
+    [isStreaming, mode, exerciseContext, sessionId, messages, runAssistantTurn],
   );
   // Keep the dictation callback pointed at the latest sendMessage.
   sendMessageRef.current = sendMessage;
+
+  // Manual retry for a reply that never arrived.
+  const retryFailedReply = useCallback(() => {
+    if (isStreaming) return;
+    const p = retryParamsRef.current;
+    if (!p) {
+      setFailedTurn(false);
+      return;
+    }
+    pendingAutoRetryRef.current = false;
+    runAssistantTurn(p.history, p.sid, p.mode, p.context, true);
+  }, [isStreaming, runAssistantTurn]);
+
+  // Rewind the conversation to a user message and regenerate the reply:
+  // everything after that message is removed (screen + DB), then Ember
+  // answers it again.
+  const resendFrom = useCallback(
+    async (msg: ChatMessage) => {
+      if (isStreaming) return;
+      tts.stop();
+      setPlayingId(null);
+      const idx = messages.findIndex((m) => m.id === msg.id);
+      if (idx === -1) return;
+      const trimmed = messages.slice(0, idx + 1);
+      setMessages(trimmed);
+      setFailedTurn(false);
+
+      const sid = msg.sessionId || sessionId || makeSessionId();
+      const dbId = Number(msg.id);
+      if (Number.isFinite(dbId)) {
+        await deleteMessagesAfter(sid, dbId);
+      }
+      await runAssistantTurn(trimmed, sid, mode, exerciseContext);
+    },
+    [isStreaming, messages, sessionId, mode, exerciseContext, tts, runAssistantTurn],
+  );
+
+  // Hold a message → copy it, or (for your own messages) resend from there.
+  const handleBubbleLongPress = useCallback(
+    (msg: ChatMessage) => {
+      const excerpt =
+        msg.content.length > 120 ? `${msg.content.slice(0, 120)}…` : msg.content;
+      const buttons: Parameters<typeof Alert.alert>[2] = [
+        { text: 'Copy', onPress: () => Clipboard.setString(msg.content) },
+      ];
+      if (msg.role === 'user' && !isStreaming) {
+        buttons.push({
+          text: 'Resend & regenerate reply',
+          onPress: () => resendFrom(msg),
+        });
+      }
+      buttons.push({ text: 'Cancel', style: 'cancel' });
+      Alert.alert('Message', excerpt, buttons);
+    },
+    [isStreaming, resendFrom],
+  );
 
   // ── Quick action handlers ──────────────────────────────────────────────────
 
@@ -582,6 +750,9 @@ export default function ChatScreen() {
     setMessages([]);
     setStreamingText('');
     setIsStreaming(false);
+    setFailedTurn(false);
+    retryParamsRef.current = null;
+    pendingAutoRetryRef.current = false;
     setMode('free_chat');
     setExerciseContext('');
     setShowMoodSlider(false);
@@ -701,6 +872,7 @@ export default function ChatScreen() {
                     ? () => handleTogglePlay(item.id, item.content)
                     : undefined
                 }
+                onLongPress={() => handleBubbleLongPress(item)}
               />
             )}
             contentContainerStyle={styles.listContent}
@@ -759,6 +931,20 @@ export default function ChatScreen() {
                   content={streamingText}
                   isStreaming
                 />
+              ) : failedTurn ? (
+                <View style={styles.retryWrap}>
+                  <Text style={styles.retryText}>
+                    That reply didn't come through — this can happen if you
+                    switch apps while Ember is typing.
+                  </Text>
+                  <TouchableOpacity
+                    style={styles.retryBtn}
+                    onPress={retryFailedReply}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.retryBtnText}>↻ Try again</Text>
+                  </TouchableOpacity>
+                </View>
               ) : null
             }
           />
@@ -945,6 +1131,30 @@ const styles = StyleSheet.create({
   modalSend: { backgroundColor: Colors.primary },
   modalSendDisabled: { opacity: 0.5 },
   modalSendText: { color: '#fff', fontSize: 16, fontWeight: '700' },
+  retryWrap: {
+    marginHorizontal: 14,
+    marginVertical: 8,
+    padding: 14,
+    borderRadius: 16,
+    backgroundColor: Colors.surface,
+    borderWidth: 1,
+    borderColor: Colors.border,
+    alignItems: 'center',
+    gap: 10,
+  },
+  retryText: {
+    fontSize: 14,
+    color: Colors.textSecondary,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+  retryBtn: {
+    paddingVertical: 9,
+    paddingHorizontal: 22,
+    borderRadius: 16,
+    backgroundColor: Colors.primary,
+  },
+  retryBtnText: { color: '#fff', fontSize: 15, fontWeight: '700' },
   newChatBtn: {
     fontSize: 14,
     color: Colors.primary,

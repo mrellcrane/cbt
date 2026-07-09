@@ -93,22 +93,40 @@ export default function DrivingScreen() {
       setStatusSafe('thinking');
 
       let full = '';
+      let failed = false;
       try {
         full = await streamChatReply({
           userName: userNameRef.current,
           mode: 'free_chat',
           history: historyRef.current,
           onDelta: (t) => {
+            // Keep the partial so a dropped connection mid-reply still
+            // yields whatever already streamed in.
+            full = t;
             if (mountedRef.current) setEmberText(stripMarkers(t));
           },
           shouldAbort: () => !mountedRef.current,
         });
       } catch {
-        full =
-          "Sorry, I couldn't connect just now. Check your network and try again.";
+        failed = true;
       }
 
       if (!mountedRef.current) return;
+
+      if (failed && !full.trim()) {
+        // Connection dropped before anything arrived (typically iOS cutting
+        // the stream when the app is backgrounded, e.g. switching to Maps).
+        // Apologize out loud but don't save a fake reply into history.
+        const apology =
+          "Sorry, I lost the connection just now. Say that again and I'll answer.";
+        setEmberText(apology);
+        setStatusSafe('speaking');
+        await tts.speak(apology);
+        if (!mountedRef.current) return;
+        setStatusSafe('idle');
+        if (autoListenRef.current && !isCrisis) beginListening();
+        return;
+      }
 
       const display = stripMarkers(full);
       setEmberText(display);

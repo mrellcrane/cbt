@@ -253,11 +253,29 @@ export async function saveMessage(msg: {
   role: 'user' | 'assistant';
   content: string;
   sessionId: string;
-}): Promise<void> {
+}): Promise<number> {
   const db = await getDb();
-  await db.runAsync(
+  const result = await db.runAsync(
     'INSERT INTO messages (role, content, session_id) VALUES (?, ?, ?)',
     [msg.role, msg.content, msg.sessionId],
+  );
+  return result.lastInsertRowId;
+}
+
+// Remove everything after a given message in a session — used by
+// "resend from here", which regenerates the reply to that message.
+export async function deleteMessagesAfter(
+  sessionId: string,
+  messageId: number,
+): Promise<void> {
+  const db = await getDb();
+  await db.runAsync(
+    'DELETE FROM message_insights WHERE session_id = ? AND message_id > ?',
+    [sessionId, messageId],
+  );
+  await db.runAsync(
+    'DELETE FROM messages WHERE session_id = ? AND id > ?',
+    [sessionId, messageId],
   );
 }
 

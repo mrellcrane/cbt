@@ -4,6 +4,7 @@ import {
   Text,
   ActivityIndicator,
   TouchableOpacity,
+  Pressable,
   StyleSheet,
 } from 'react-native';
 import { Colors } from '@/constants/colors';
@@ -15,6 +16,8 @@ interface Props {
   /** When provided (Ember messages), shows a tap-to-play audio button. */
   onTogglePlay?: () => void;
   isPlaying?: boolean;
+  /** Hold a message to open its actions (copy, resend). */
+  onLongPress?: () => void;
 }
 
 export function ChatBubble({
@@ -23,6 +26,7 @@ export function ChatBubble({
   isStreaming = false,
   onTogglePlay,
   isPlaying = false,
+  onLongPress,
 }: Props) {
   const isUser = role === 'user';
   const showPlay =
@@ -40,11 +44,14 @@ export function ChatBubble({
           <Text style={styles.avatarText}>E</Text>
         </View>
       )}
-      <View
-        style={[
+      <Pressable
+        onLongPress={onLongPress}
+        delayLongPress={350}
+        style={({ pressed }) => [
           styles.bubble,
           isUser ? styles.bubbleUser : styles.bubbleBot,
           isUser ? styles.bubbleUserRadius : styles.bubbleBotRadius,
+          pressed && onLongPress ? styles.bubblePressed : null,
         ]}
       >
         {isStreaming && content.length === 0 ? (
@@ -71,7 +78,7 @@ export function ChatBubble({
             )}
           </Text>
         )}
-      </View>
+      </Pressable>
       {showPlay && (
         <TouchableOpacity
           onPress={onTogglePlay}
@@ -122,6 +129,7 @@ const styles = StyleSheet.create({
     shadowRadius: 3,
     elevation: 2,
   },
+  bubblePressed: { opacity: 0.75 },
   bubbleUser: { backgroundColor: Colors.bubbleUser },
   bubbleBot: {
     backgroundColor: Colors.bubbleBot,
